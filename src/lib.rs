@@ -57,6 +57,7 @@ impl IpWareConfig {
     }
 }
 
+#[derive(Default)]
 pub struct IpWareProxy {
     proxy_count: u16,
     proxy_list: Vec<IpAddr>,
@@ -79,7 +80,7 @@ impl IpWareProxy {
         strict: bool,
     ) -> bool {
         if self.proxy_list.is_empty() {
-            false
+            true
         } else {
             let ip_count = ip_list.into_iter().collect::<Vec<_>>().len();
 
@@ -99,7 +100,7 @@ impl IpWareProxy {
         strict: bool,
     ) -> bool {
         if self.proxy_list.is_empty() {
-            false
+            true
         } else {
             let ip_list = ip_list.into_iter().collect::<Vec<_>>();
             let ip_count = ip_list.len();
@@ -154,8 +155,10 @@ impl IpWare {
         let mut loopback_list = vec![];
         let mut private_list = vec![];
         let meta_values = self.get_meta_values(headers);
+        // dbg!(meta_values.clone());
         for &meta_value in meta_values.iter() {
             let meta_ips = self.get_ips_from_string(meta_value.to_str().unwrap().to_owned());
+            // dbg!(meta_ips.clone());
             if meta_ips.is_empty() {
                 continue;
             }
@@ -195,9 +198,9 @@ impl IpWare {
     fn get_ips_from_string(&self, ip_str: String) -> Vec<IpAddr> {
         let mut result = ip_str
             .split(',')
-            .filter_map(|single_ip| single_ip.parse().ok())
+            .filter_map(|single_ip| single_ip.trim_start().trim_end().parse().ok())
             .collect::<Vec<_>>();
-        if self.config.leftmost {
+        if !self.config.leftmost {
             result.reverse();
         }
         result
@@ -235,9 +238,111 @@ impl IpWare {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
 
     #[test]
-    fn it_works() {
-        assert_eq!(1, 1);
+    fn empty_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let headers = HeaderMap::new();
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn single_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_some();
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "177.139.233.133".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_some();
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_precedence_order() {
+        let ipware = IpWare::new(
+            IpWareConfig::new(
+                vec![
+                    HeaderName::from_static("http_x_forwarded_for"),
+                    HeaderName::from_static("x_forwarded_for"),
+                ],
+                true,
+            ),
+            IpWareProxy::default(),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "177.139.233.138, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "177.139.233.133".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_some();
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_precedence_private_first() {
+        let ipware = IpWare::new(
+            IpWareConfig::new(
+                vec![
+                    HeaderName::from_static("http_x_forwarded_for"),
+                    HeaderName::from_static("x_forwarded_for"),
+                ],
+                true,
+            ),
+            IpWareProxy::default(),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "10.0.0.0, 10.0.0.1, 10.0.0.2".parse().unwrap(),
+        );
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "177.139.233.138, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "177.139.233.133".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_some();
+        assert_that!(ip_addr).contains_value("177.139.233.138".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
     }
 }
