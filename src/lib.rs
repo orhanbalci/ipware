@@ -55,6 +55,11 @@ impl IpWareConfig {
             leftmost,
         }
     }
+
+    pub fn leftmost(mut self, leftmost: bool) -> Self {
+        self.leftmost = leftmost;
+        self
+    }
 }
 
 #[derive(Default)]
@@ -79,7 +84,7 @@ impl IpWareProxy {
         ip_list: I,
         strict: bool,
     ) -> bool {
-        if self.proxy_list.is_empty() {
+        if self.proxy_count < 1 {
             true
         } else {
             let ip_count = ip_list.into_iter().collect::<Vec<_>>().len();
@@ -114,8 +119,13 @@ impl IpWareProxy {
                     .into_iter()
                     .rev()
                     .take(proxy_count)
+                    .rev()
                     .zip(self.proxy_list.iter())
-                    .all(|(ip_addr, proxy_addr)| *ip_addr == *proxy_addr)
+                    .all(|(ip_addr, proxy_addr)| {
+                        dbg!((*ip_addr, *proxy_addr));
+
+                        *ip_addr == *proxy_addr
+                    })
             }
         }
     }
@@ -158,15 +168,17 @@ impl IpWare {
         // dbg!(meta_values.clone());
         for &meta_value in meta_values.iter() {
             let meta_ips = self.get_ips_from_string(meta_value.to_str().unwrap().to_owned());
-            // dbg!(meta_ips.clone());
+            dbg!(meta_ips.clone());
             if meta_ips.is_empty() {
                 continue;
             }
             let proxy_count_validated = self.proxy.is_proxy_count_valid(&meta_ips, strict);
+            // dbg!(&proxy_count_validated);
             if !proxy_count_validated {
                 continue;
             }
             let proxy_list_validated = self.proxy.is_proxy_trusted_list_valid(&meta_ips, strict);
+            dbg!(&proxy_list_validated);
             if !proxy_list_validated {
                 continue;
             }
@@ -196,6 +208,8 @@ impl IpWare {
     }
 
     /// Parses ip addresses from given list. Ip addresses assumed to be seperated with ,
+    /// If any of the parts contains invalid string function returns empty vec.
+    ///
     /// # Arguments
     /// * `ip_str` - String contains , seperated ip addresses
     fn get_ips_from_string(&self, ip_str: String) -> Vec<IpAddr> {
@@ -232,10 +246,7 @@ impl IpWare {
 
         if self.proxy.proxy_count > 0 && proxy_count_validated {
             return (
-                ip_list
-                    .iter()
-                    .rev()
-                    .nth(self.proxy.proxy_count as usize + 1),
+                ip_list.iter().rev().nth(self.proxy.proxy_count as usize),
                 true,
             );
         }
@@ -397,5 +408,242 @@ mod tests_ipv4 {
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
         assert_that!(ip_addr).is_none();
         assert!(!trusted_route);
+    }
+
+    #[test]
+    fn error_first() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "unknown, 177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "177.139.233.138, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.139.233.138".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "177.139.233.139".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton_private_fallback() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "10.0.0.0".parse().unwrap());
+        headers.insert("HTTP_X_REAL_IP", "177.139.233.139".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn best_matched_ip() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("REMOTE_ADDR", "177.31.233.133".parse().unwrap());
+        headers.insert("HTTP_X_REAL_IP", "192.168.1.1".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.31.233.133".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn best_matched_ip_public() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("REMOTE_ADDR", "177.31.233.133".parse().unwrap());
+        headers.insert("HTTP_X_REAL_IP", "177.31.233.122".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.31.233.122".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn best_matched_ip_private() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("REMOTE_ADDR", "127.0.0.1".parse().unwrap());
+        headers.insert("HTTP_X_REAL_IP", "192.168.1.1".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("192.168.1.1".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn best_matched_ip_private_loopback_precedence() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("REMOTE_ADDR", "192.168.1.1".parse().unwrap());
+        headers.insert("HTTP_X_REAL_IP", "127.0.0.1".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("192.168.1.1".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn best_matched_ip_private_precedence() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("REMOTE_ADDR", "172.25.0.3".parse().unwrap());
+        headers.insert("HTTP_X_FORWARDED_FOR", "172.25.0.1".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("172.25.0.1".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn hundred_low_range_public() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_REAL_IP", "100.63.0.9".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("100.63.0.9".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn hundred_block_private() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_REAL_IP", "100.76.0.9".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("100.76.0.9".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn hundred_high_range_public() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_REAL_IP", "100.128.0.9".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("100.128.0.9".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn proxy_order_right_most() {
+        let ipware = IpWare::new(
+            IpWareConfig::default().leftmost(false),
+            IpWareProxy::default(),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("198.84.193.158".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+}
+
+#[cfg(test)]
+mod tests_ipv4_proxy_count {
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn singleton_proxy_count() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "177.139.233.139".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton_proxy_count_private() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "10.0.0.0".parse().unwrap());
+        headers.insert("X_REAL_IP", "177.139.233.139".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn proxy_count_relax() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn proxy_count_strict() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.138, 177.139.233.139, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+}
+
+#[cfg(test)]
+mod tests_ipv4_proxy_list {
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn proxy_list_strict_success() {
+        let ipware = IpWare::new(
+            IpWareConfig::default(),
+            IpWareProxy::new(
+                0,
+                vec![
+                    "198.84.193.157".parse::<IpAddr>().unwrap(),
+                    "198.84.193.158".parse::<IpAddr>().unwrap(),
+                ],
+            ),
+        );
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
     }
 }
