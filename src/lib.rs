@@ -986,3 +986,41 @@ mod tests_ipv6_common {
         assert!(!trusted_route);
     }
 }
+
+#[cfg(test)]
+mod tests_ipv6_proxy_count {
+
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn singleton_proxy_count() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf".parse().unwrap(),
+        );
+        headers.insert("HTTP_X_REAL_IP", "2606:4700:4700::1111".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton_proxy_count_private() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "::1".parse().unwrap());
+        headers.insert(
+            "HTTP_X_REAL_IP",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+}
