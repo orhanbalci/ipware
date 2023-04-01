@@ -257,7 +257,7 @@ impl<'a> IpWare<'a> {
 }
 
 #[cfg(test)]
-mod tests_ipv4 {
+mod tests_ipv4_common {
     use super::*;
     use spectral::assert_that;
     use spectral::option::ContainingOptionAssertions;
@@ -779,6 +779,210 @@ mod tests_ipv4_port {
         headers.insert("HTTP_X_FORWARDED_FOR", "127.0.0.1:80".parse().unwrap());
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
         assert_that!(ip_addr).contains_value("127.0.0.1".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+}
+
+#[cfg(test)]
+mod tests_ipv6_common {
+
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn single_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "74dc:2bc".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_precedence_order() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("X_FORWARDED_FOR", "74dc:2be, 74dc:2bf".parse().unwrap());
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "74dc:2bc".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_precedence_private_first() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert("HTTP_X_FORWARDED_FOR", "2001:db8:, ::1".parse().unwrap());
+        headers.insert("REMOTE_ADDR", "74dc:2bc".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn multi_precedence_invalid_first() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "unknown, 2001:db8:, ::1".parse().unwrap(),
+        );
+        headers.insert("REMOTE_ADDR", "74dc:2bc".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn error_only() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "unknown, 3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn first_error_bailout() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "unknown, 3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn error_beast_match() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "unknown, 3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        headers.insert(
+            "X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn singleton_private_fallback() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "::1".parse().unwrap());
+        headers.insert(
+            "HTTP_X_REAL_IP",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
         assert!(!trusted_route);
     }
 }
