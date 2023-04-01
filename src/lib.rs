@@ -1024,3 +1024,137 @@ mod tests_ipv6_proxy_count {
         assert!(!trusted_route);
     }
 }
+
+#[cfg(test)]
+mod tests_ipv6_proxy_list {
+
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn proxy_trusted_proxy_strict() {
+        let proxies = vec![
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
+            "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
+        ];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn proxy_trusted_proxy_not_strict() {
+        let proxies = vec![
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
+            "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
+        ];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn proxy_trusted_proxy_not_strict_long() {
+        let proxies = vec![
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
+            "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
+        ];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "2001:4860:4860::7777,3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 2001:4860:4860::8888"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn proxy_trusted_proxy_error() {
+        let proxies = vec![
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
+            "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
+        ];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 2606:4700:4700::1111, 74dc::2bb"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
+}
+
+#[cfg(test)]
+mod tests_ipv6_encapsulation {
+
+    use std::net::Ipv4Addr;
+
+    use super::*;
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+    use spectral::option::OptionAssertions;
+
+    #[test]
+    fn ipv6_encapsulation_of_ipv4_private() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert("HTTP_X_FORWARDED_FOR", "::ffff:127.0.0.1".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr)
+            .contains_value(IpAddr::V6(Ipv4Addr::new(127, 0, 0, 1).to_ipv6_mapped()));
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn ipv6_encapsulation_of_ipv4_public() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "::ffff:177.139.233.139".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value(IpAddr::V6(
+            Ipv4Addr::new(177, 139, 233, 139).to_ipv6_mapped(),
+        ));
+        assert!(!trusted_route);
+    }
+}
