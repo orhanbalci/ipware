@@ -11,12 +11,6 @@ This library aims to extract ip address of http request clients by using
 different http-header values. Ported from [python-ipware](https://github.com/un33k/python-ipware)
 developped by [@un33k](https://github.com/un33k)
 
-### ⚠️ Warning
-This library uses unstable rust API.
-```rust ignore
-![feature(ip)]
-````
-
 ### 📦 Cargo.toml
 
 ```toml
@@ -65,21 +59,21 @@ println!("{} {}", ip_addr.unwrap(), trusted_route);
 177.139.233.139 false
 ```
 
-### ⚙️ Configuration
+### Configuration
 
 |        Params   |  Description                                                                                                                                                                                                                                                                                                                                                     |
-| --------------  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `proxy_count`   |  Total number of expected proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_count = 0` then `client`<br>: if `proxy_count = 1` then `client, proxy1`<br>: if `proxy_count = 2` then `client, proxy1, proxy2` <br>: if `proxy_count = 3` then `client, proxy1, proxy2 proxy3`                                                                       |
-|  `proxy_list`   |  List of trusted proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_list = ['10.1.']` then `client, 10.1.1.1` OR `client, proxy1, 10.1.1.1`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1` OR `client, proxy1, 10.2.2.2`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1 10.2.2.2` OR `client, 10.1.1.1 10.2.2.2` |
-|    `leftmost`   |  `leftmost = True` is default for de-facto standard.<br>: `leftmost = False` for rare legacy networks that are configured with the `rightmost` pattern.<br>: It converts `client, proxy1 proxy2` to `proxy2, proxy1, client`                                                                                                                                     |
+| --------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proxy_count`   | : Total number of expected proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_count = 0` then `client`<br>: if `proxy_count = 1` then `client, proxy1`<br>: if `proxy_count = 2` then `client, proxy1, proxy2` <br>: if `proxy_count = 3` then `client, proxy1, proxy2 proxy3`                                                                       |
+|  `proxy_list`   | : List of trusted proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_list = ['10.1.']` then `client, 10.1.1.1` OR `client, proxy1, 10.1.1.1`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1` OR `client, proxy1, 10.2.2.2`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1 10.2.2.2` OR `client, 10.1.1.1 10.2.2.2` |
+|    `leftmost`   | : `leftmost = True` is default for de-facto standard.<br>: `leftmost = False` for rare legacy networks that are configured with the `rightmost` pattern.<br>: It converts `client, proxy1 proxy2` to `proxy2, proxy1, client`                                                                                                                                     |
 
 |          Output   |  Description                                                                                 |
-| ----------------  | -------------------------------------------------------------------------------------------  |
-|            `ip`   |  Client IP address object of type IPv4Addr or IPv6Addr                                       |
-| `trusted_route`   |  If proxy `proxy_count` and/or `proxy_list` were provided and matched, `true`, else `false`  |
+| ----------------: | :------------------------------------------------------------------------------------------- |
+|            `ip`   | : Client IP address object of type IPv4Addr or IPv6Addr                                      |
+| `trusted_route`   | : If proxy `proxy_count` and/or `proxy_list` were provided and matched, `true`, else `false` |
 
 
-#### 🔢 Http Header Precedence Order
+#### Http Header Precedence Order
 
 The client IP address can be found in one or more request headers attributes. The lookup order is top to bottom and the default attributes are as follow.
 
@@ -125,7 +119,7 @@ IpWareConfig::new(
            );
 ```
 
-#### 🤝 Trusted Proxies
+#### Trusted Proxies
 
 If your http server is behind one or more known proxy server(s), you can filter out unwanted requests
 by providing a `trusted proxy list`, or a known proxy `count`.
@@ -157,7 +151,7 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 // The request went through our <proxy1> and <proxy2>, then our server
 // Total ip address are total trusted proxies + client ip
 // We don't allow far-end proxies, or fake addresses (exact or None)
-let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
+let(ip, trusted_route) = ipware.get_client_ip(&headers, true);
 ```
 
 #### Proxy Count
@@ -186,13 +180,13 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 
 // usage: strict mode (X-Forwarded-For: <client>, <proxy1>, <proxy2>)
 // total number of ip addresses are exactly equal to client ip + proxy_count
-let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
+let(ip, trusted_route) = ipware.get_client_ip(&headers, true);
 ```
 
 #### Support for IPv4, Ipv6, and IP:Port patterns and encapsulation
 ```text
 - Library looks for an IpAddr in header values. If this fails algorithm tries to parse a SocketAddr (This on contains ports in addition to IpAddr)
-- get_client_ip call returns an IpAddr enum. User can match for V4 or V6 variants. If a V6 ip is retrieved user can utilize `to_ipv4_mapped` to
+- `get_client_ip` call returns an IpAddr enum. User can match for V4 or V6 variants. If a V6 ip is retrieved user can utilize `to_ipv4_mapped` to
    retrieve wrapped V4 address if available.
 ```
 
@@ -202,19 +196,17 @@ Please note that the [de-facto](https:#developer.mozilla.org/en-US/docs/Web/HTTP
 for the originating client IP address is the `leftmost`as per`client, proxy1, proxy2`, and the `rightmost` proxy is the most
 trusted proxy.
 However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
-```
-```rust no_run
-use ipware::*;
+
 let ipware = IpWare::new(
-    IpWareConfig::default().leftmost(false),
-    IpWareProxy::default(),
-);
+           IpWareConfig::default().leftmost(false),
+           IpWareProxy::default(),
+       );
 ```
 
 <!-- cargo-rdme end -->
 
 
-## 📝 License
+### 📝 License
 
 Licensed under MIT License ([LICENSE](LICENSE)).
 
