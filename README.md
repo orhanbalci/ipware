@@ -59,7 +59,7 @@ println!("{} {}", ip_addr.unwrap(), trusted_route);
 177.139.233.139 false
 ```
 
-### Configuration
+### ⚙️ Configuration
 
 |        Params   |  Description                                                                                                                                                                                                                                                                                                                                                     |
 | --------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -73,7 +73,7 @@ println!("{} {}", ip_addr.unwrap(), trusted_route);
 | `trusted_route`   | : If proxy `proxy_count` and/or `proxy_list` were provided and matched, `true`, else `false` |
 
 
-#### Http Header Precedence Order
+#### 🔢 Http Header Precedence Order
 
 The client IP address can be found in one or more request headers attributes. The lookup order is top to bottom and the default attributes are as follow.
 
@@ -119,7 +119,7 @@ IpWareConfig::new(
            );
 ```
 
-#### Trusted Proxies
+#### 🤝 Trusted Proxies
 
 If your http server is behind one or more known proxy server(s), you can filter out unwanted requests
 by providing a `trusted proxy list`, or a known proxy `count`.
