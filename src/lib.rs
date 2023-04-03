@@ -6,11 +6,64 @@
 // Enable is_global call
 #![feature(ip)]
 
+//!
+//! This library aims to extract ip address of http request clients by using
+//! different http-header values. Ported from [python-ipware](https://github.com/un33k/python-ipware)
+//! developped by [@un33k](https://github.com/un33k)
+//!
+//! ## 📦 Cargo.toml
+//!
+//! ```toml
+//! [dependencies]
+//! ipware = "0.1"
+//! ```
+//!
+//! ## 🔧 Example
+//!
+//! ```rust
+//! use http::{HeaderMap, HeaderName};
+//! use ipware::{IpWare, IpWareConfig, IpWareProxy};
+//!
+//! let ipware = IpWare::new(
+//!     IpWareConfig::new(
+//!         vec![
+//!             HeaderName::from_static("http_x_forwarded_for"),
+//!             HeaderName::from_static("x_forwarded_for"),
+//!         ],
+//!         true,
+//!     ),
+//!     IpWareProxy::default(),
+//! );
+//! let mut headers = HeaderMap::new();
+//! headers.insert(
+//!     "HTTP_X_FORWARDED_FOR",
+//!     "177.139.233.139, 198.84.193.157, 198.84.193.158"
+//!         .parse()
+//!         .unwrap(),
+//! );
+//! headers.insert(
+//!     "X_FORWARDED_FOR",
+//!     "177.139.233.138, 198.84.193.157, 198.84.193.158"
+//!         .parse()
+//!         .unwrap(),
+//! );
+//! headers.insert("REMOTE_ADDR", "177.139.233.133".parse().unwrap());
+//! let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+//! println!("{} {}", ip_addr.unwrap(), trusted_route);
+//! ```
+//!
+//!
+//! ## 🖨️ Output
+//!
+//! ```text
+//! 177.139.233.139 false
+//! ```
+
+use std::net::{IpAddr, SocketAddr};
+use std::string::ToString;
+
 pub use http::header::*;
 pub use http::HeaderName;
-use std::net::IpAddr;
-use std::net::SocketAddr;
-use std::string::ToString;
 
 pub struct IpWareConfig {
     precedence: Vec<HeaderName>,
@@ -21,12 +74,12 @@ impl Default for IpWareConfig {
     fn default() -> Self {
         IpWareConfig {
             precedence: vec![
-                HeaderName::from_static("x_forwarded_for"), // Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]),
+                HeaderName::from_static("x_forwarded_for"), /* Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]), */
                 HeaderName::from_static("http_x_forwarded_for"), // Similar to X_FORWARDED_TO
-                HeaderName::from_static("http_client_ip"), // Standard headers used by providers such as Amazon EC2, Heroku etc.
-                HeaderName::from_static("http_x_real_ip"), // Standard headers used by providers such as Amazon EC2, Heroku etc.
+                HeaderName::from_static("http_client_ip"), /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
+                HeaderName::from_static("http_x_real_ip"), /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
                 HeaderName::from_static("http_x_forwarded"), // Squid and others
-                HeaderName::from_static("http_x_cluster_client_ip"), // Rackspace LB and Riverbed Stingray
+                HeaderName::from_static("http_x_cluster_client_ip"), /* Rackspace LB and Riverbed Stingray */
                 HeaderName::from_static("http_forwarded_for"),       // RFC 7239
                 HeaderName::from_static("http_forwarded"),           // RFC 7239
                 HeaderName::from_static("http_via"),                 // Squid and others
@@ -38,7 +91,7 @@ impl Default for IpWareConfig {
                 HeaderName::from_static("true-client-ip"),      // CloudFlare Enterprise,
                 HeaderName::from_static("fastly-client-ip"),    // Firebase, Fastly
                 HeaderName::from_static("forwarded"),           // RFC 7239
-                HeaderName::from_static("client-ip"), // Akamai and Cloudflare: True-Client-IP and Fastly: Fastly-Client-IP
+                HeaderName::from_static("client-ip"), /* Akamai and Cloudflare: True-Client-IP and Fastly: Fastly-Client-IP */
                 HeaderName::from_static("remote_addr"), // Default
             ],
             leftmost: true,
@@ -51,10 +104,7 @@ impl IpWareConfig {
     where
         T: Into<Vec<HeaderName>>,
     {
-        IpWareConfig {
-            precedence: precedence.into(),
-            leftmost,
-        }
+        IpWareConfig { precedence: precedence.into(), leftmost }
     }
 
     pub fn leftmost(mut self, leftmost: bool) -> Self {
@@ -71,10 +121,7 @@ pub struct IpWareProxy<'a> {
 
 impl<'a> IpWareProxy<'a> {
     pub fn new(proxy_count: u16, proxy_list: &'a [IpAddr]) -> Self {
-        IpWareProxy {
-            proxy_count,
-            proxy_list,
-        }
+        IpWareProxy { proxy_count, proxy_list }
     }
 
     pub fn is_proxy_count_valid<'b, I: IntoIterator<Item = &'b IpAddr>>(
@@ -256,10 +303,10 @@ impl<'a> IpWare<'a> {
 
 #[cfg(test)]
 mod tests_ipv4_common {
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn empty_header() {
@@ -558,10 +605,10 @@ mod tests_ipv4_common {
 
 #[cfg(test)]
 mod tests_ipv4_proxy_count {
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn singleton_proxy_count() {
@@ -621,10 +668,10 @@ mod tests_ipv4_proxy_count {
 
 #[cfg(test)]
 mod tests_ipv4_proxy_list {
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn proxy_list_strict_success() {
@@ -688,10 +735,10 @@ mod tests_ipv4_proxy_list {
 }
 #[cfg(test)]
 mod tests_ipv4_proxy_count_proxy_list {
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn proxy_list_relax() {
@@ -737,9 +784,10 @@ mod tests_ipv4_proxy_count_proxy_list {
 #[cfg(test)]
 mod tests_ipv4_port {
 
-    use super::*;
     use spectral::assert_that;
     use spectral::option::ContainingOptionAssertions;
+
+    use super::*;
 
     #[test]
     fn ipv4_public_with_port() {
@@ -784,10 +832,10 @@ mod tests_ipv4_port {
 #[cfg(test)]
 mod tests_ipv6_common {
 
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn single_header() {
@@ -988,9 +1036,10 @@ mod tests_ipv6_common {
 #[cfg(test)]
 mod tests_ipv6_proxy_count {
 
-    use super::*;
     use spectral::assert_that;
     use spectral::option::OptionAssertions;
+
+    use super::*;
 
     #[test]
     fn singleton_proxy_count() {
@@ -1026,10 +1075,10 @@ mod tests_ipv6_proxy_count {
 #[cfg(test)]
 mod tests_ipv6_proxy_list {
 
-    use super::*;
     use spectral::assert_that;
-    use spectral::option::ContainingOptionAssertions;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
 
     #[test]
     fn proxy_trusted_proxy_strict() {
@@ -1125,9 +1174,10 @@ mod tests_ipv6_encapsulation {
 
     use std::net::Ipv4Addr;
 
-    use super::*;
     use spectral::assert_that;
     use spectral::option::ContainingOptionAssertions;
+
+    use super::*;
 
     #[test]
     fn ipv6_encapsulation_of_ipv4_private() {
@@ -1159,12 +1209,12 @@ mod tests_ipv6_encapsulation {
 #[cfg(test)]
 mod tests_ipv6_with_port {
 
-    use std::net::Ipv4Addr;
-    use std::net::Ipv6Addr;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
-    use super::*;
     use spectral::assert_that;
     use spectral::option::ContainingOptionAssertions;
+
+    use super::*;
 
     #[test]
     fn encapsulation_of_ipv4_public_with_port() {
