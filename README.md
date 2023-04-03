@@ -68,15 +68,15 @@ println!("{} {}", ip_addr.unwrap(), trusted_route);
 ### ⚙️ Configuration
 
 |        Params   |  Description                                                                                                                                                                                                                                                                                                                                                     |
-| --------------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `proxy_count`   | : Total number of expected proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_count = 0` then `client`<br>: if `proxy_count = 1` then `client, proxy1`<br>: if `proxy_count = 2` then `client, proxy1, proxy2` <br>: if `proxy_count = 3` then `client, proxy1, proxy2 proxy3`                                                                       |
-|  `proxy_list`   | : List of trusted proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_list = ['10.1.']` then `client, 10.1.1.1` OR `client, proxy1, 10.1.1.1`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1` OR `client, proxy1, 10.2.2.2`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1 10.2.2.2` OR `client, 10.1.1.1 10.2.2.2` |
-|    `leftmost`   | : `leftmost = True` is default for de-facto standard.<br>: `leftmost = False` for rare legacy networks that are configured with the `rightmost` pattern.<br>: It converts `client, proxy1 proxy2` to `proxy2, proxy1, client`                                                                                                                                     |
+| --------------  | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `proxy_count`   |  Total number of expected proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_count = 0` then `client`<br>: if `proxy_count = 1` then `client, proxy1`<br>: if `proxy_count = 2` then `client, proxy1, proxy2` <br>: if `proxy_count = 3` then `client, proxy1, proxy2 proxy3`                                                                       |
+|  `proxy_list`   |  List of trusted proxies (pattern: `client, proxy1, ..., proxy2`)<br>: if `proxy_list = ['10.1.']` then `client, 10.1.1.1` OR `client, proxy1, 10.1.1.1`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1` OR `client, proxy1, 10.2.2.2`<br>: if `proxy_list = ['10.1', '10.2.']` then `client, 10.1.1.1 10.2.2.2` OR `client, 10.1.1.1 10.2.2.2` |
+|    `leftmost`   |  `leftmost = True` is default for de-facto standard.<br>: `leftmost = False` for rare legacy networks that are configured with the `rightmost` pattern.<br>: It converts `client, proxy1 proxy2` to `proxy2, proxy1, client`                                                                                                                                     |
 
 |          Output   |  Description                                                                                 |
-| ----------------: | :------------------------------------------------------------------------------------------- |
-|            `ip`   | : Client IP address object of type IPv4Addr or IPv6Addr                                      |
-| `trusted_route`   | : If proxy `proxy_count` and/or `proxy_list` were provided and matched, `true`, else `false` |
+| ----------------  | -------------------------------------------------------------------------------------------  |
+|            `ip`   |  Client IP address object of type IPv4Addr or IPv6Addr                                       |
+| `trusted_route`   |  If proxy `proxy_count` and/or `proxy_list` were provided and matched, `true`, else `false`  |
 
 
 #### 🔢 Http Header Precedence Order
