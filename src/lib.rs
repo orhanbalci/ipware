@@ -13,7 +13,7 @@
 //!
 //! ## ⚠️ Warning
 //! This library uses unstable rust API.
-//! ```rust
+//! ```rust ignore
 //! ![feature(ip)]
 //! ````
 //!
