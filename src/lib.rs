@@ -11,6 +11,10 @@
 //! different http-header values. Ported from [python-ipware](https://github.com/un33k/python-ipware)
 //! developped by [@un33k](https://github.com/un33k)
 //!
+//! ## ⚠️ Warning
+//! This library uses unstable rust API.
+//! ![feature(ip)]
+//!
 //! ## 📦 Cargo.toml
 //!
 //! ```toml
