@@ -151,7 +151,7 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 // The request went through our <proxy1> and <proxy2>, then our server
 // Total ip address are total trusted proxies + client ip
 // We don't allow far-end proxies, or fake addresses (exact or None)
-let(ip, trusted_route) = ipware.get_client_ip(&headers, true);
+let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
 ```
 
 #### Proxy Count
@@ -180,13 +180,13 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 
 // usage: strict mode (X-Forwarded-For: <client>, <proxy1>, <proxy2>)
 // total number of ip addresses are exactly equal to client ip + proxy_count
-let(ip, trusted_route) = ipware.get_client_ip(&headers, true);
+let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
 ```
 
 #### Support for IPv4, Ipv6, and IP:Port patterns and encapsulation
 ```text
 - Library looks for an IpAddr in header values. If this fails algorithm tries to parse a SocketAddr (This on contains ports in addition to IpAddr)
-- `get_client_ip` call returns an IpAddr enum. User can match for V4 or V6 variants. If a V6 ip is retrieved user can utilize `to_ipv4_mapped` to
+- get_client_ip call returns an IpAddr enum. User can match for V4 or V6 variants. If a V6 ip is retrieved user can utilize `to_ipv4_mapped` to
    retrieve wrapped V4 address if available.
 ```
 
@@ -196,11 +196,13 @@ Please note that the [de-facto](https:#developer.mozilla.org/en-US/docs/Web/HTTP
 for the originating client IP address is the `leftmost`as per`client, proxy1, proxy2`, and the `rightmost` proxy is the most
 trusted proxy.
 However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
-
+```
+```rust no_run
+use ipware::*;
 let ipware = IpWare::new(
-           IpWareConfig::default().leftmost(false),
-           IpWareProxy::default(),
-       );
+    IpWareConfig::default().leftmost(false),
+    IpWareProxy::default(),
+);
 ```
 
 <!-- cargo-rdme end -->
