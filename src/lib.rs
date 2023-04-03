@@ -13,7 +13,9 @@
 //!
 //! ## ⚠️ Warning
 //! This library uses unstable rust API.
+//! ```rust
 //! ![feature(ip)]
+//! ````
 //!
 //! ## 📦 Cargo.toml
 //!

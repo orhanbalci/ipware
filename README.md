@@ -13,7 +13,9 @@ developped by [@un33k](https://github.com/un33k)
 
 ### ⚠️ Warning
 This library uses unstable rust API.
+```rust
 ![feature(ip)]
+````
 
 ### 📦 Cargo.toml
 
