@@ -347,23 +347,19 @@ impl<'a> IpWare<'a> {
         let mut loopback_list = vec![];
         let mut private_list = vec![];
         let meta_values = self.get_meta_values(headers);
-        dbg!(&self.proxy.proxy_list.len());
         for &meta_value in meta_values.iter() {
             let meta_ips = self.get_ips_from_string(meta_value.to_str().unwrap().to_owned());
             if meta_ips.is_empty() {
                 continue;
             }
             let proxy_count_validated = self.proxy.is_proxy_count_valid(&meta_ips, strict);
-            dbg!(&proxy_count_validated);
             if !proxy_count_validated {
                 continue;
             }
             let proxy_list_validated = self.proxy.is_proxy_trusted_list_valid(&meta_ips, strict);
-            dbg!(&proxy_list_validated);
             if !proxy_list_validated {
                 continue;
             }
-            dbg!(meta_ips.clone());
             let (client_ip, trusted_route) =
                 self.get_best_ip(&meta_ips, proxy_count_validated, proxy_list_validated);
             if let Some(client_ip) = client_ip {
@@ -429,7 +425,6 @@ impl<'a> IpWare<'a> {
         if ip_list.is_empty() {
             return (None, false);
         }
-        dbg!(&self.proxy.proxy_list);
         if !self.proxy.proxy_list.is_empty() && proxy_list_validated {
             return (ip_list.iter().rev().nth(self.proxy.proxy_list.len()), true);
         }
