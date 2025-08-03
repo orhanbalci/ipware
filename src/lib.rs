@@ -127,10 +127,8 @@
 //! ```rust
 //! // In the above scenario, use your load balancer IP address as a way to filter out unwanted requests.
 //! use std::net::IpAddr;
-//! use ipware::IpWare;
-//! use ipware::IpWareConfig;
-//! use ipware::IpWareProxy;
-//! use http::HeaderMap;
+//!
+//! use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
 //!
 //! let headers = HeaderMap::new(); // replace this with your own headers
 //! let proxies = vec![
@@ -149,7 +147,7 @@
 //! // Total ip address are total trusted proxies + client ip
 //! // We don't allow far-end proxies, or fake addresses (exact or None)
 //! let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
-//! ```
+//!  ```
 //!
 //! ### Proxy Count
 //!
@@ -157,8 +155,8 @@
 //!
 //! You can customize the proxy count by providing your `proxy_count` using IpWareProxy.
 //! ```rust
-//! use ipware::*;
 //! use std::net::IpAddr;
+//! use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
 //!
 //! // In the above scenario, the total number of proxies can be used as a way to filter out unwanted requests.
 //! // enforce proxy count
@@ -195,7 +193,8 @@
 //! However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
 //! ```
 //!```rust
-//! use ipware::*;
+//! use ipware::{IpWare, IpWareConfig, IpWareProxy};
+//!
 //! let ipware = IpWare::new(
 //!     IpWareConfig::default().leftmost(false),
 //!     IpWareProxy::default(),
@@ -203,10 +202,10 @@
 //! ```
 
 use std::net::{IpAddr, SocketAddr};
+use std::str::FromStr;
 use std::string::ToString;
 
-pub use http::header::*;
-pub use http::HeaderName;
+pub use http::header::{HeaderMap, HeaderName, HeaderValue};
 
 #[derive(Clone, Debug)]
 pub struct IpWareConfig {
@@ -264,53 +263,52 @@ pub struct IpWareProxy {
 }
 
 impl IpWareProxy {
-    pub fn new(proxy_count: u16, proxy_list: Vec<IpAddr>) -> Self {
-        IpWareProxy { proxy_count, proxy_list }
+    pub fn new<T>(proxy_count: u16, proxy_list: T) -> Self
+    where
+        T: Into<Vec<IpAddr>>,
+    {
+        IpWareProxy { proxy_count, proxy_list: proxy_list.into() }
     }
 
-    pub fn is_proxy_count_valid<'a, I: IntoIterator<Item = &'a IpAddr>>(
-        &self,
-        ip_list: I,
-        strict: bool,
-    ) -> bool {
+    pub fn is_proxy_count_valid<'a, I>(&self, ip_list: I, strict: bool) -> bool
+    where
+        I: IntoIterator<Item = &'a IpAddr>,
+    {
         if self.proxy_count < 1 {
-            true
-        } else {
-            let ip_count = ip_list.into_iter().collect::<Vec<_>>().len();
-
-            if ip_count < 1 {
-                false
-            } else if strict {
-                self.proxy_list.len() == ip_count - 1
-            } else {
-                ip_count - 1 > self.proxy_list.len()
-            }
+            return true;
         }
+
+        let ip_count = ip_list.into_iter().collect::<Vec<_>>().len();
+        if ip_count < 1 {
+            return false;
+        }
+        if strict {
+            return self.proxy_list.len() == ip_count - 1;
+        }
+
+        ip_count - 1 > self.proxy_list.len()
     }
 
-    pub fn is_proxy_trusted_list_valid<'a, I: IntoIterator<Item = &'a IpAddr>>(
-        &self,
-        ip_list: I,
-        strict: bool,
-    ) -> bool {
+    pub fn is_proxy_trusted_list_valid<'a, I>(&self, ip_list: I, strict: bool) -> bool
+    where
+        I: IntoIterator<Item = &'a IpAddr>,
+    {
         if self.proxy_list.is_empty() {
-            true
-        } else {
-            let ip_list = ip_list.into_iter().collect::<Vec<_>>();
-            let ip_count = ip_list.len();
-            let proxy_count = self.proxy_list.len();
-            if (strict && ip_count - 1 != proxy_count) || (ip_count - 1 < proxy_count) {
-                false
-            } else {
-                ip_list
-                    .into_iter()
-                    .rev()
-                    .take(proxy_count)
-                    .rev()
-                    .zip(self.proxy_list.iter())
-                    .all(|(ip_addr, proxy_addr)| *ip_addr == *proxy_addr)
-            }
+            return true;
         }
+        let ip_list = ip_list.into_iter().collect::<Vec<_>>();
+        let ip_count = ip_list.len();
+        let proxy_count = self.proxy_list.len();
+        if (strict && ip_count - 1 != proxy_count) || (ip_count - 1 < proxy_count) {
+            return false;
+        }
+        ip_list
+            .into_iter()
+            .rev()
+            .take(proxy_count)
+            .rev()
+            .zip(self.proxy_list.iter())
+            .all(|(ip_addr, proxy_addr)| ip_addr == proxy_addr)
     }
 }
 
@@ -330,9 +328,8 @@ impl IpWare {
         headers: &'a HeaderMap,
         name: &HeaderName,
     ) -> Option<&'a HeaderValue> {
-        let value = headers.get(name);
-        match value {
-            Some(_) => value,
+        match headers.get(name) {
+            Some(value) => Some(value),
             None => headers.get(name.to_string().replace('_', "-")),
         }
     }
@@ -343,9 +340,10 @@ impl IpWare {
             .iter()
             .filter_map(|header_name| self.get_meta_value(headers, header_name))
             .filter_map(|header_value| header_value.to_str().ok())
-            .collect::<Vec<_>>()
+            .collect()
     }
 
+    /// Returns the client's IP address.
     pub fn get_client_ip(&self, headers: &HeaderMap, strict: bool) -> (Option<IpAddr>, bool) {
         let mut loopback_list = vec![];
         let mut private_list = vec![];
@@ -394,29 +392,21 @@ impl IpWare {
     /// # Arguments
     /// * `ip_str` - String contains , seperated ip addresses
     fn get_ips_from_string(&self, ip_str: &str) -> Vec<IpAddr> {
-        let mut result = ip_str
+        let Ok(mut result): Result<Vec<_>, _> = ip_str
             .split(',')
-            .map(|single_ip| {
-                let trimmed_ip = single_ip.trim_start().trim_end();
-                let maybe_ipaddr = trimmed_ip.parse::<IpAddr>();
-                match maybe_ipaddr {
-                    Ok(_) => maybe_ipaddr.ok(),
-                    Err(_) => trimmed_ip
-                        .parse::<SocketAddr>()
-                        .map(|socket_addr| socket_addr.ip())
-                        .ok(),
-                }
+            .map(|single_ip| single_ip.trim())
+            .map(|trimmed_ip| match IpAddr::from_str(trimmed_ip) {
+                Ok(ip) => Ok(ip),
+                Err(_) => SocketAddr::from_str(trimmed_ip).map(|socket_addr| socket_addr.ip()),
             })
-            .collect::<Vec<_>>();
-        if result.iter().any(|maybe_ipaddr| maybe_ipaddr.is_none()) {
-            return vec![];
-        } else if !self.config.leftmost {
+            .collect()
+        else {
+            return Vec::new();
+        };
+        if !self.config.leftmost {
             result.reverse();
         }
         result
-            .iter()
-            .map(|maybe_ipaddr| maybe_ipaddr.unwrap())
-            .collect::<Vec<_>>()
     }
 
     fn get_best_ip<'a>(
@@ -438,7 +428,7 @@ impl IpWare {
                 true,
             );
         }
-        return (ip_list.first(), false);
+        (ip_list.first(), false)
     }
 }
 

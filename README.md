@@ -103,7 +103,7 @@ let request_headers_precedence = vec![
 ```
 
 You can customize the order by providing your own list using IpWareConfig.
-```rust no_run
+```rust
 use ipware::IpWareConfig;
 use http::HeaderName;
 // specific header name
@@ -111,12 +111,12 @@ IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")],true);
 
 // multiple header names
 IpWareConfig::new(
-               vec![
-                   HeaderName::from_static("http_x_forwarded_for"),
-                   HeaderName::from_static("x_forwarded_for"),
-               ],
-               true,
-           );
+    vec![
+        HeaderName::from_static("http_x_forwarded_for"),
+        HeaderName::from_static("x_forwarded_for"),
+    ],
+    true,
+);
 ```
 
 #### 🤝 Trusted Proxies
@@ -127,20 +127,18 @@ by providing a `trusted proxy list`, or a known proxy `count`.
 You can customize the proxy IP prefixes by providing your own list by using IpWareProxy.
 You can pass your custom list on every call, when calling the proxy-aware api to fetch the ip.
 
-```rust no_run
+```rust
 // In the above scenario, use your load balancer IP address as a way to filter out unwanted requests.
 use std::net::IpAddr;
-use ipware::IpWare;
-use ipware::IpWareConfig;
-use ipware::IpWareProxy;
-use http::HeaderMap;
+
+use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
 
 let headers = HeaderMap::new(); // replace this with your own headers
 let proxies = vec![
-            "198.84.193.157".parse::<IpAddr>().unwrap(),
-            "198.84.193.158".parse::<IpAddr>().unwrap(),
-        ];
-let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+    "198.84.193.157".parse::<IpAddr>().unwrap(),
+    "198.84.193.158".parse::<IpAddr>().unwrap(),
+];
+let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 
 // usage: non-strict mode (X-Forwarded-For: <fake>, <client>, <proxy1>, <proxy2>)
 // The request went through our <proxy1> and <proxy2>, then our server
@@ -159,7 +157,7 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
 If your http server is behind a `known` number of proxies, but you deploy on multiple providers and don't want to track proxy IPs, you still can filter out unwanted requests by providing proxy `count`.
 
 You can customize the proxy count by providing your `proxy_count` using IpWareProxy.
-```rust no_run
+```rust
 use ipware::*;
 use std::net::IpAddr;
 
@@ -168,11 +166,11 @@ use std::net::IpAddr;
 
 let headers = HeaderMap::new(); // replace this with your own headers
 let proxies = vec![];
-let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
 
 // enforce proxy count and trusted proxies
 let proxies = vec!["198.84.193.157".parse::<IpAddr>().unwrap()];
-let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
 
 // usage: non-strict mode (X-Forwarded-For: <fake>, <client>, <proxy1>, <proxy2>)
 // total number of ip addresses are greater than the total count
@@ -197,7 +195,7 @@ for the originating client IP address is the `leftmost`as per`client, proxy1, pr
 trusted proxy.
 However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
 ```
-```rust no_run
+```rust
 use ipware::*;
 let ipware = IpWare::new(
     IpWareConfig::default().leftmost(false),
