@@ -3,19 +3,10 @@
 // Ensures that `pub` means published in the public API.
 // This property is useful for reasoning about breaking API changes.
 #![deny(unreachable_pub)]
-// Enable is_global call
-#![feature(ip)]
 
-//!
 //! This library aims to extract ip address of http request clients by using
 //! different http-header values. Ported from [python-ipware](https://github.com/un33k/python-ipware)
 //! developped by [@un33k](https://github.com/un33k)
-//!
-//! ## ⚠️ Warning
-//! This library uses unstable rust API.
-//! ```rust ignore
-//! ![feature(ip)]
-//! ````
 //!
 //! ## 📦 Cargo.toml
 //!
@@ -109,7 +100,7 @@
 //! ```
 //!
 //! You can customize the order by providing your own list using IpWareConfig.
-//! ```rust no_run
+//! ```rust
 //! use ipware::IpWareConfig;
 //! use http::HeaderName;
 //! // specific header name
@@ -133,7 +124,7 @@
 //! You can customize the proxy IP prefixes by providing your own list by using IpWareProxy.
 //! You can pass your custom list on every call, when calling the proxy-aware api to fetch the ip.
 //!
-//! ```rust no_run
+//! ```rust
 //! // In the above scenario, use your load balancer IP address as a way to filter out unwanted requests.
 //! use std::net::IpAddr;
 //! use ipware::IpWare;
@@ -165,7 +156,7 @@
 //! If your http server is behind a `known` number of proxies, but you deploy on multiple providers and don't want to track proxy IPs, you still can filter out unwanted requests by providing proxy `count`.
 //!
 //! You can customize the proxy count by providing your `proxy_count` using IpWareProxy.
-//! ```rust no_run
+//! ```rust
 //! use ipware::*;
 //! use std::net::IpAddr;
 //!
@@ -203,7 +194,7 @@
 //! trusted proxy.
 //! However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
 //! ```
-//!```rust no_run
+//!```rust
 //! use ipware::*;
 //! let ipware = IpWare::new(
 //!     IpWareConfig::default().leftmost(false),
@@ -376,7 +367,7 @@ impl<'a> IpWare<'a> {
             let (client_ip, trusted_route) =
                 self.get_best_ip(&meta_ips, proxy_count_validated, proxy_list_validated);
             if let Some(client_ip) = client_ip {
-                if client_ip.is_global() {
+                if ip_rfc::global(client_ip) {
                     return (Some(*client_ip), trusted_route);
                 }
                 if client_ip.is_loopback() {
