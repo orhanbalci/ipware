@@ -335,11 +335,12 @@ impl<'a> IpWare<'a> {
         }
     }
 
-    fn get_meta_values<'b>(&self, headers: &'b HeaderMap) -> Vec<&'b HeaderValue> {
+    fn get_meta_values(&self, headers: &'a HeaderMap) -> Vec<&'a str> {
         self.config
             .precedence
             .iter()
             .filter_map(|header_name| self.get_meta_value(headers, header_name))
+            .filter_map(|header_value| header_value.to_str().ok())
             .collect::<Vec<_>>()
     }
 
@@ -348,7 +349,7 @@ impl<'a> IpWare<'a> {
         let mut private_list = vec![];
         let meta_values = self.get_meta_values(headers);
         for &meta_value in meta_values.iter() {
-            let meta_ips = self.get_ips_from_string(meta_value.to_str().unwrap().to_owned());
+            let meta_ips = self.get_ips_from_string(meta_value);
             if meta_ips.is_empty() {
                 continue;
             }
@@ -390,7 +391,7 @@ impl<'a> IpWare<'a> {
     ///
     /// # Arguments
     /// * `ip_str` - String contains , seperated ip addresses
-    fn get_ips_from_string(&self, ip_str: String) -> Vec<IpAddr> {
+    fn get_ips_from_string(&self, ip_str: &str) -> Vec<IpAddr> {
         let mut result = ip_str
             .split(',')
             .map(|single_ip| {
