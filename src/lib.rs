@@ -137,7 +137,7 @@
 //!             "198.84.193.157".parse::<IpAddr>().unwrap(),
 //!             "198.84.193.158".parse::<IpAddr>().unwrap(),
 //!         ];
-//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 //!
 //! // usage: non-strict mode (X-Forwarded-For: <fake>, <client>, <proxy1>, <proxy2>)
 //! // The request went through our <proxy1> and <proxy2>, then our server
@@ -165,11 +165,11 @@
 //!
 //! let headers = HeaderMap::new(); // replace this with your own headers
 //! let proxies = vec![];
-//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
 //!
 //! // enforce proxy count and trusted proxies
 //! let proxies = vec!["198.84.193.157".parse::<IpAddr>().unwrap()];
-//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+//! let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
 //!
 //! // usage: non-strict mode (X-Forwarded-For: <fake>, <client>, <proxy1>, <proxy2>)
 //! // total number of ip addresses are greater than the total count
@@ -208,6 +208,7 @@ use std::string::ToString;
 pub use http::header::*;
 pub use http::HeaderName;
 
+#[derive(Clone, Debug)]
 pub struct IpWareConfig {
     precedence: Vec<HeaderName>,
     leftmost: bool,
@@ -256,18 +257,18 @@ impl IpWareConfig {
     }
 }
 
-#[derive(Default)]
-pub struct IpWareProxy<'a> {
+#[derive(Clone, Debug, Default)]
+pub struct IpWareProxy {
     proxy_count: u16,
-    proxy_list: &'a [IpAddr],
+    proxy_list: Vec<IpAddr>,
 }
 
-impl<'a> IpWareProxy<'a> {
-    pub fn new(proxy_count: u16, proxy_list: &'a [IpAddr]) -> Self {
+impl IpWareProxy {
+    pub fn new(proxy_count: u16, proxy_list: Vec<IpAddr>) -> Self {
         IpWareProxy { proxy_count, proxy_list }
     }
 
-    pub fn is_proxy_count_valid<'b, I: IntoIterator<Item = &'b IpAddr>>(
+    pub fn is_proxy_count_valid<'a, I: IntoIterator<Item = &'a IpAddr>>(
         &self,
         ip_list: I,
         strict: bool,
@@ -287,7 +288,7 @@ impl<'a> IpWareProxy<'a> {
         }
     }
 
-    pub fn is_proxy_trusted_list_valid<'b, I: IntoIterator<Item = &'b IpAddr>>(
+    pub fn is_proxy_trusted_list_valid<'a, I: IntoIterator<Item = &'a IpAddr>>(
         &self,
         ip_list: I,
         strict: bool,
@@ -313,21 +314,22 @@ impl<'a> IpWareProxy<'a> {
     }
 }
 
-pub struct IpWare<'a> {
+#[derive(Clone, Debug, Default)]
+pub struct IpWare {
     config: IpWareConfig,
-    proxy: IpWareProxy<'a>,
+    proxy: IpWareProxy,
 }
 
-impl<'a> IpWare<'a> {
-    pub fn new(config: IpWareConfig, proxy: IpWareProxy<'a>) -> Self {
+impl IpWare {
+    pub fn new(config: IpWareConfig, proxy: IpWareProxy) -> Self {
         IpWare { config, proxy }
     }
 
-    fn get_meta_value<'b>(
+    fn get_meta_value<'a>(
         &self,
-        headers: &'b HeaderMap,
+        headers: &'a HeaderMap,
         name: &HeaderName,
-    ) -> Option<&'b HeaderValue> {
+    ) -> Option<&'a HeaderValue> {
         let value = headers.get(name);
         match value {
             Some(_) => value,
@@ -335,7 +337,7 @@ impl<'a> IpWare<'a> {
         }
     }
 
-    fn get_meta_values(&self, headers: &'a HeaderMap) -> Vec<&'a str> {
+    fn get_meta_values<'a>(&self, headers: &'a HeaderMap) -> Vec<&'a str> {
         self.config
             .precedence
             .iter()
@@ -417,12 +419,12 @@ impl<'a> IpWare<'a> {
             .collect::<Vec<_>>()
     }
 
-    fn get_best_ip<'b>(
+    fn get_best_ip<'a>(
         &self,
-        ip_list: &'b [IpAddr],
+        ip_list: &'a [IpAddr],
         proxy_count_validated: bool,
         proxy_list_validated: bool,
-    ) -> (Option<&'b IpAddr>, bool) {
+    ) -> (Option<&'a IpAddr>, bool) {
         if ip_list.is_empty() {
             return (None, false);
         }
@@ -752,7 +754,7 @@ mod tests_ipv4_proxy_count {
     #[test]
     fn singleton_proxy_count() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert("HTTP_X_FORWARDED_FOR", "177.139.233.139".parse().unwrap());
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
@@ -763,7 +765,7 @@ mod tests_ipv4_proxy_count {
     #[test]
     fn singleton_proxy_count_private() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert("HTTP_X_FORWARDED_FOR", "10.0.0.0".parse().unwrap());
         headers.insert("X_REAL_IP", "177.139.233.139".parse().unwrap());
@@ -775,7 +777,7 @@ mod tests_ipv4_proxy_count {
     #[test]
     fn proxy_count_relax() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -791,7 +793,7 @@ mod tests_ipv4_proxy_count {
     #[test]
     fn proxy_count_strict() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -818,7 +820,7 @@ mod tests_ipv4_proxy_list {
             "198.84.193.157".parse::<IpAddr>().unwrap(),
             "198.84.193.158".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -838,7 +840,7 @@ mod tests_ipv4_proxy_list {
             "198.84.193.157".parse::<IpAddr>().unwrap(),
             "198.84.193.158".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -858,7 +860,7 @@ mod tests_ipv4_proxy_list {
             "198.84.193.157".parse::<IpAddr>().unwrap(),
             "198.84.193.158".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -885,7 +887,7 @@ mod tests_ipv4_proxy_count_proxy_list {
             "198.84.193.157".parse::<IpAddr>().unwrap(),
             "198.84.193.158".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, proxies));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -905,7 +907,7 @@ mod tests_ipv4_proxy_count_proxy_list {
             "198.84.193.157".parse::<IpAddr>().unwrap(),
             "198.84.193.158".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, proxies));
 
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -1183,7 +1185,7 @@ mod tests_ipv6_proxy_count {
     #[test]
     fn singleton_proxy_count() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -1198,7 +1200,7 @@ mod tests_ipv6_proxy_count {
     #[test]
     fn singleton_proxy_count_private() {
         let proxies = vec![];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
         let mut headers = HeaderMap::new();
         headers.insert("HTTP_X_FORWARDED_FOR", "::1".parse().unwrap());
         headers.insert(
@@ -1225,7 +1227,7 @@ mod tests_ipv6_proxy_list {
             "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
             "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -1248,7 +1250,7 @@ mod tests_ipv6_proxy_list {
             "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
             "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -1271,7 +1273,7 @@ mod tests_ipv6_proxy_list {
             "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
             "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
@@ -1294,7 +1296,7 @@ mod tests_ipv6_proxy_list {
             "2606:4700:4700::1111".parse::<IpAddr>().unwrap(),
             "2001:4860:4860::8888".parse::<IpAddr>().unwrap(),
         ];
-        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, &proxies));
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
         let mut headers = HeaderMap::new();
         headers.insert(
             "HTTP_X_FORWARDED_FOR",
