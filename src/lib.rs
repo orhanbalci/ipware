@@ -437,22 +437,17 @@ impl IpWare {
                     return (Some(*client_ip), trusted_route);
                 }
                 if client_ip.is_loopback() {
-                    loopback_list.push(*client_ip);
+                    loopback_list.push((*client_ip, trusted_route));
                 } else {
-                    private_list.push(*client_ip);
+                    private_list.push((*client_ip, trusted_route));
                 }
             }
         }
 
-        if !private_list.is_empty() {
-            return (private_list.first().cloned(), false);
+        match private_list.first().or(loopback_list.first()) {
+            Some(&(client_ip, trusted_route)) => (Some(client_ip), trusted_route),
+            None => (None, false),
         }
-
-        if !loopback_list.is_empty() {
-            return (loopback_list.first().cloned(), false);
-        }
-
-        (None, false)
     }
 
     /// Parses ip addresses from given list. Ip addresses assumed to be seperated with ,
@@ -1569,6 +1564,63 @@ mod tests_http02 {
         );
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
         assert_that!(ip_addr).contains_value("177.139.233.138".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+}
+
+#[cfg(all(test, feature = "http1"))]
+mod tests_private_trusted_route {
+    use spectral::assert_that;
+    use spectral::option::ContainingOptionAssertions;
+
+    use super::*;
+
+    fn xff(value: &str) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert("X-FORWARDED-FOR", value.parse().unwrap());
+        headers
+    }
+
+    #[test]
+    fn private_client_behind_proxy_count() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&xff("10.1.2.3, 10.0.0.2"), true);
+        assert_that!(ip_addr).contains_value("10.1.2.3".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn private_client_behind_proxy_list() {
+        let proxies = vec!["10.0.0.2".parse::<IpAddr>().unwrap()];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&xff("192.168.1.7, 10.0.0.2"), false);
+        assert_that!(ip_addr).contains_value("192.168.1.7".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn loopback_client_behind_proxy_count() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&xff("127.0.0.1, 10.0.0.2"), false);
+        assert_that!(ip_addr).contains_value("127.0.0.1".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn private_client_without_proxy_config_is_untrusted() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&xff("10.1.2.3, 10.0.0.2"), false);
+        assert_that!(ip_addr).contains_value("10.1.2.3".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn public_client_preferred_over_private() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, vec![]));
+        let mut headers = xff("10.1.2.3, 10.0.0.2");
+        headers.insert("X-REAL-IP", "93.184.216.34, 10.0.0.2".parse().unwrap());
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).contains_value("93.184.216.34".parse::<IpAddr>().unwrap());
         assert!(trusted_route);
     }
 }

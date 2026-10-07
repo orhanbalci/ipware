@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Proxy count validation compared the header's IP count against the length of
   the trusted proxy list instead of `proxy_count`. In strict mode, headers with
   exactly `proxy_count` proxies were rejected; they now resolve with a trusted route.
+- Private and loopback client IPs always returned `trusted_route = false`, even
+  when the proxy count or trusted proxy list matched. They now report the
+  validated route, as documented. Public IPs are still preferred over private ones.
 
 ## [0.4.0] - 2026-10-07
 
