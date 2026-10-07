@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `max_forwarded_hops` to limit how far the rightmost strategies walk.
 - `IpRanges` and `IpRangeError` for parsing and matching IP addresses and CIDR ranges.
 - `header` module with common client IP header names.
+- `ClientIpStrategy::SingleHeaderWithPort` for headers that always carry
+  `ip:port`, such as `CloudFront-Viewer-Address`, including unbracketed IPv6.
+- `providers` feature (off by default): `ClientIpResolver::platform` presets for
+  Cloudflare, CloudFront, Fastly, Google Cloud load balancers and Fly.io;
+  snapshots of provider ranges plus GitHub and Stripe webhook ranges; and
+  `providers::parse` to read each provider's published list at runtime.
 
 ### Documentation
 

@@ -37,6 +37,7 @@ your framework uses; both can be enabled at the same time.
 | ----------------- | -------------- | ---------------------------------------------- |
 | `http1` (default) | 1.x            | axum 0.7+, hyper 1, tonic 0.12+, reqwest 0.12+ |
 | `http02`          | 0.2            | actix-web 4, hyper 0.14, warp 0.3              |
+| `providers`       |                | platform presets and provider IP ranges        |
 
 ```toml
 # actix-web 4
@@ -112,10 +113,9 @@ use ipware::{header, ClientIpResolver, ClientIpStrategy, IpRanges};
 
 // Behind Cloudflare: trust CF-Connecting-IP from Cloudflare's ranges
 // (see https://www.cloudflare.com/ips/).
-let cloudflare = ClientIpResolver::new(ClientIpStrategy::single_header(
-    header::CF_CONNECTING_IP,
-))
-.trusted_proxies(IpRanges::parse(["173.245.48.0/20", "103.21.244.0/22"])?);
+let cloudflare =
+    ClientIpResolver::new(ClientIpStrategy::single_header(header::CF_CONNECTING_IP))
+        .trusted_proxies(IpRanges::parse(["173.245.48.0/20", "103.21.244.0/22"])?);
 
 // A CDN in front of a load balancer on a private network.
 let two_proxies = ClientIpResolver::new(ClientIpStrategy::rightmost_trusted_count(
@@ -158,6 +158,37 @@ IPv4-mapped IPv6 addresses (`::ffff:192.0.2.1`) are returned as IPv4.
 - The rightmost strategies stop at the first entry they cannot parse, such as
   `unknown`, since nothing to its left can be trusted.
 
+### 🌐 Platform presets
+
+With the `providers` feature, [`ClientIpResolver::platform`] builds a resolver
+for a CDN or hosting platform from its client IP header and published proxy
+ranges:
+
+| Platform | Header | Trusted proxies |
+| --- | --- | --- |
+| `Cloudflare` | `CF-Connecting-IP` | Cloudflare edge ranges |
+| `CloudFront` | `CloudFront-Viewer-Address` | CloudFront origin-facing ranges |
+| `Fastly` | `X-Forwarded-For`, from the right | Fastly edge ranges |
+| `GoogleCloudLoadBalancer` | `X-Forwarded-For`: `client, load-balancer` | `35.191.0.0/16`, `130.211.0.0/22` |
+| `FlyIo` | `Fly-Client-IP` | private networks |
+
+```toml
+ipware = { version = "0.4", features = ["providers"] }
+```
+
+```rust
+use ipware::providers::Platform;
+use ipware::ClientIpResolver;
+
+let resolver = ClientIpResolver::platform(Platform::Cloudflare);
+```
+
+`ipware::providers` also has the GitHub and Stripe webhook ranges for allow
+lists, and parsers for each provider's published list. The built-in ranges are
+snapshots from the date in `providers::SNAPSHOT_DATE`; providers change them
+over time, so update the crate regularly or fetch fresh lists and read them with
+`providers::parse`.
+
 ### 📋 IP ranges
 
 [`IpRanges`] parses IP addresses and CIDR ranges, for trusted proxies or your own
@@ -186,7 +217,9 @@ let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
 let mut headers = HeaderMap::new();
 headers.insert(
     "x-forwarded-for",
-    "177.139.233.139, 198.84.193.157, 198.84.193.158".parse().unwrap(),
+    "177.139.233.139, 198.84.193.157, 198.84.193.158"
+        .parse()
+        .unwrap(),
 );
 let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 assert_eq!(ip, Some("177.139.233.139".parse::<IpAddr>().unwrap()));
@@ -273,7 +306,9 @@ let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 let mut headers = HeaderMap::new();
 headers.insert(
     "x-forwarded-for",
-    "6.6.6.6, 177.139.233.139, 198.84.193.157, 198.84.193.158".parse().unwrap(),
+    "6.6.6.6, 177.139.233.139, 198.84.193.157, 198.84.193.158"
+        .parse()
+        .unwrap(),
 );
 // Non-strict: extra entries on the left are ignored.
 let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
@@ -296,7 +331,10 @@ Some legacy networks put the client on the right: `proxy2, proxy1, client`. Use
 ```rust
 use ipware::{IpWare, IpWareConfig, IpWareProxy};
 
-let ipware = IpWare::new(IpWareConfig::default().leftmost(false), IpWareProxy::default());
+let ipware = IpWare::new(
+    IpWareConfig::default().leftmost(false),
+    IpWareProxy::default(),
+);
 ```
 
 Header entries may be IPv4 or IPv6 addresses, with or without a port. A header
@@ -321,6 +359,7 @@ by [@un33k](https://github.com/un33k).
 [`IpRanges`]: https://docs.rs/ipware/latest/ipware/struct.IpRanges.html
 [`IpWareConfig::new`]: https://docs.rs/ipware/latest/ipware/struct.IpWareConfig.html#method.new
 [`header::FORWARDED`]: https://docs.rs/ipware/latest/ipware/header/constant.FORWARDED.html
+[`ClientIpResolver::platform`]: https://docs.rs/ipware/latest/ipware/struct.ClientIpResolver.html#method.platform
 
 <!-- cargo-rdme end -->
 

@@ -9,6 +9,7 @@ keywords = ["http","client", "ip", "proxy"]
 license = "MIT"
 readme = "README.md"
 categories = ["web-programming"]
+exclude = [".cargo", "xtask"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,15 +19,21 @@ default = ["http1"]
 http1 = ["dep:http"]
 # Read headers from `http` 0.2 `HeaderMap` (actix-web 4, hyper 0.14)
 http02 = ["dep:http02"]
+# Platform presets and published IP ranges of CDNs, load balancers and webhook senders
+providers = ["dep:serde_json"]
 
 [dependencies]
 http = { version = "1", optional = true }
 http02 = { package = "http", version = "0.2.9", optional = true }
 ip_rfc = "0.1.0"
 ipnet = "2.9"
+serde_json = { version = "1", optional = true }
 
 [package.metadata.docs.rs]
 all-features = true
 
 [dev-dependencies]
 spectral = "0.6"
+
+[workspace]
+members = ["xtask"]

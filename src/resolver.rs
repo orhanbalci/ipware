@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::net::IpAddr;
 
-use crate::parse::{self, forwarded_ips, single_ip};
+use crate::parse::{self, forwarded_ips, single_ip, single_ip_with_port};
 use crate::{Headers, IpRanges, IpWare};
 
 /// How [`ClientIpResolver`] reads the client IP from request headers.
@@ -27,6 +27,10 @@ pub enum ClientIpStrategy {
     /// [`CF_CONNECTING_IP`](crate::header::CF_CONNECTING_IP) or
     /// [`X_REAL_IP`](crate::header::X_REAL_IP). The last header line is used.
     SingleHeader(Cow<'static, str>),
+    /// A header that holds a single `ip:port` set by the proxy, such as
+    /// [`CLOUDFRONT_VIEWER_ADDRESS`](crate::header::CLOUDFRONT_VIEWER_ADDRESS).
+    /// The port is always removed, so unbracketed IPv6 addresses parse correctly.
+    SingleHeaderWithPort(Cow<'static, str>),
     /// The first IP from the right that is a public internet address.
     RightmostNonPrivate(Cow<'static, str>),
     /// The IP added by the outermost of a fixed number of proxies: with `n`
@@ -52,6 +56,11 @@ impl ClientIpStrategy {
     /// [`ClientIpStrategy::SingleHeader`].
     pub fn single_header(header: impl Into<Cow<'static, str>>) -> Self {
         ClientIpStrategy::SingleHeader(header.into())
+    }
+
+    /// [`ClientIpStrategy::SingleHeaderWithPort`].
+    pub fn single_header_with_port(header: impl Into<Cow<'static, str>>) -> Self {
+        ClientIpStrategy::SingleHeaderWithPort(header.into())
     }
 
     /// [`ClientIpStrategy::RightmostNonPrivate`].
@@ -258,6 +267,7 @@ impl<H: Headers> Lookup<'_, H> {
                     .find_map(|strategy| self.resolve(strategy));
             }
             ClientIpStrategy::SingleHeader(name) => single_ip(self.headers, name),
+            ClientIpStrategy::SingleHeaderWithPort(name) => single_ip_with_port(self.headers, name),
             ClientIpStrategy::RightmostNonPrivate(name) => {
                 self.rightmost(name, |ip| ip_rfc::global(&ip))
             }

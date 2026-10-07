@@ -34,6 +34,30 @@ pub(crate) fn single_ip<H: Headers>(headers: &H, name: &str) -> Option<IpAddr> {
     headers.get_all_str(name).pop().flatten().and_then(parse_ip)
 }
 
+/// Reads a header that holds a single `ip:port`; the last header line wins.
+pub(crate) fn single_ip_with_port<H: Headers>(headers: &H, name: &str) -> Option<IpAddr> {
+    headers
+        .get_all_str(name)
+        .pop()
+        .flatten()
+        .and_then(parse_ip_with_port)
+}
+
+/// Parses `ip:port` where the port is always present, so unbracketed IPv6
+/// addresses such as `2001:db8::1:443` are split at the last colon.
+pub(crate) fn parse_ip_with_port(entry: &str) -> Option<IpAddr> {
+    let entry = entry.trim().trim_matches('"').trim();
+    if entry.starts_with('[') {
+        return parse_ip(entry);
+    }
+    let (host, port) = entry.rsplit_once(':')?;
+    if port.is_empty() || !port.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let host = host.split_once('%').map_or(host, |(addr, _zone)| addr);
+    IpAddr::from_str(host).ok().map(|ip| ip.to_canonical())
+}
+
 /// The `for=` value of one RFC 7239 element, e.g. `for=192.0.2.60;proto=http`.
 fn forwarded_for(element: &str) -> Option<&str> {
     split_unquoted(element, ';').find_map(|pair| {
@@ -154,6 +178,23 @@ mod tests {
             forwarded_ips(&headers, FORWARDED),
             vec![ip("192.0.2.60"), ip("2001:db8:cafe::17"), None, None, None]
         );
+    }
+
+    #[test]
+    fn parses_entries_with_port() {
+        assert_eq!(
+            parse_ip_with_port("198.51.100.10:46532"),
+            ip("198.51.100.10")
+        );
+        assert_eq!(parse_ip_with_port("2001:db8::1:443"), ip("2001:db8::1"));
+        assert_eq!(
+            parse_ip_with_port("2001:0db8:85a3:0000:0000:8a2e:0370:7334:46532"),
+            ip("2001:db8:85a3::8a2e:370:7334")
+        );
+        assert_eq!(parse_ip_with_port("[2001:db8::1]:443"), ip("2001:db8::1"));
+        assert_eq!(parse_ip_with_port("198.51.100.10"), None);
+        assert_eq!(parse_ip_with_port("198.51.100.10:"), None);
+        assert_eq!(parse_ip_with_port("198.51.100.10:http"), None);
     }
 
     #[test]

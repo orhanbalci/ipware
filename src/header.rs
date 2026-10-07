@@ -12,6 +12,8 @@ pub const X_REAL_IP: &str = "x-real-ip";
 pub const CF_CONNECTING_IP: &str = "cf-connecting-ip";
 /// `True-Client-IP`, set by Akamai and Cloudflare Enterprise.
 pub const TRUE_CLIENT_IP: &str = "true-client-ip";
+/// `CloudFront-Viewer-Address`, set by AWS CloudFront as `ip:port`.
+pub const CLOUDFRONT_VIEWER_ADDRESS: &str = "cloudfront-viewer-address";
 /// `Fly-Client-IP`, set by Fly.io.
 pub const FLY_CLIENT_IP: &str = "fly-client-ip";
 /// `Fastly-Client-IP`, set by Fastly.
