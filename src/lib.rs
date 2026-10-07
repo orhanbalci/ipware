@@ -197,7 +197,8 @@
 //! ## 📋 IP ranges
 //!
 //! [`IpRanges`] parses IP addresses and CIDR ranges, for trusted proxies or your own
-//! allow and block lists.
+//! allow and block lists. Ranges are merged and looked up by binary search, so
+//! blocklists with hundreds of thousands of entries stay fast.
 //!
 //! ```rust
 //! use ipware::IpRanges;
