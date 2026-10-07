@@ -73,6 +73,28 @@ impl IpRanges {
         self.v4.is_empty() && self.v6.is_empty()
     }
 
+    /// The number of IPv4 addresses in the set.
+    ///
+    /// ```rust
+    /// use ipware::IpRanges;
+    ///
+    /// let ranges = IpRanges::parse(["10.0.0.0/24", "10.0.0.128/25", "192.0.2.1"]).unwrap();
+    /// assert_eq!(ranges.ipv4_address_count(), 257);
+    /// ```
+    pub fn ipv4_address_count(&self) -> u64 {
+        self.v4
+            .iter()
+            .map(|&(start, end)| u64::from(end - start) + 1)
+            .sum()
+    }
+
+    /// The number of IPv6 addresses in the set, saturating at `u128::MAX` for `::/0`.
+    pub fn ipv6_address_count(&self) -> u128 {
+        self.v6.iter().fold(0u128, |total, &(start, end)| {
+            total.saturating_add((end - start).saturating_add(1))
+        })
+    }
+
     /// Returns `true` when `ip` is in any of the ranges.
     ///
     /// IPv4-mapped IPv6 addresses (`::ffff:192.0.2.1`) match IPv4 ranges.
@@ -219,6 +241,17 @@ mod tests {
         assert!(ranges.contains("10.0.1.255".parse().unwrap()));
         assert!(!ranges.contains("10.0.2.0".parse().unwrap()));
         assert!(ranges.contains("10.0.3.0".parse().unwrap()));
+    }
+
+    #[test]
+    fn counts_addresses() {
+        let ranges = IpRanges::parse(["10.0.0.0/8", "10.0.0.0/24", "2001:db8::/120"]).unwrap();
+        assert_eq!(ranges.ipv4_address_count(), 1 << 24);
+        assert_eq!(ranges.ipv6_address_count(), 256);
+        let all = IpRanges::parse(["0.0.0.0/0", "::/0"]).unwrap();
+        assert_eq!(all.ipv4_address_count(), 1 << 32);
+        assert_eq!(all.ipv6_address_count(), u128::MAX);
+        assert_eq!(IpRanges::new().ipv4_address_count(), 0);
     }
 
     #[test]
