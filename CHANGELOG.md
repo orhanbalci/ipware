@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-07
+
 ### Added
 
 - `ClientIpResolver`: resolves the client IP from headers and the TCP peer
@@ -110,7 +112,8 @@ For `http` 1.x based frameworks no code changes are needed.
 
 - Initial release, ported from [python-ipware](https://github.com/un33k/python-ipware).
 
-[Unreleased]: https://github.com/orhanbalci/ipware/compare/v0.4.0...main
+[Unreleased]: https://github.com/orhanbalci/ipware/compare/v0.5.0...main
+[0.5.0]: https://github.com/orhanbalci/ipware/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/orhanbalci/ipware/compare/bc46f50...v0.4.0
 [0.3.0]: https://github.com/orhanbalci/ipware/compare/3e280fa...bc46f50
 [0.2.0]: https://github.com/orhanbalci/ipware/compare/3edb891...3e280fa

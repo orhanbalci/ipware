@@ -25,7 +25,7 @@ It offers two APIs:
 
 ```toml
 [dependencies]
-ipware = "0.4"
+ipware = "0.5"
 ```
 
 #### Features
@@ -41,7 +41,7 @@ your framework uses; both can be enabled at the same time.
 
 ```toml
 # actix-web 4
-ipware = { version = "0.4", default-features = false, features = ["http02"] }
+ipware = { version = "0.5", default-features = false, features = ["http02"] }
 ```
 
 `http` 1.x types are re-exported at the crate root (`ipware::HeaderMap`), and each
@@ -173,7 +173,7 @@ ranges:
 | `FlyIo` | `Fly-Client-IP` | private networks |
 
 ```toml
-ipware = { version = "0.4", features = ["providers"] }
+ipware = { version = "0.5", features = ["providers"] }
 ```
 
 ```rust

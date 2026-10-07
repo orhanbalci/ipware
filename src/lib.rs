@@ -23,7 +23,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ipware = "0.4"
+//! ipware = "0.5"
 //! ```
 //!
 //! ### Features
@@ -39,7 +39,7 @@
 //!
 //! ```toml
 //! # actix-web 4
-//! ipware = { version = "0.4", default-features = false, features = ["http02"] }
+//! ipware = { version = "0.5", default-features = false, features = ["http02"] }
 //! ```
 //!
 //! `http` 1.x types are re-exported at the crate root (`ipware::HeaderMap`), and each
@@ -176,7 +176,7 @@
 //! | `FlyIo` | `Fly-Client-IP` | private networks |
 //!
 //! ```toml
-//! ipware = { version = "0.4", features = ["providers"] }
+//! ipware = { version = "0.5", features = ["providers"] }
 //! ```
 //!
 //! ```rust
