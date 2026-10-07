@@ -158,6 +158,26 @@ IPv4-mapped IPv6 addresses (`::ffff:192.0.2.1`) are returned as IPv4.
 - The rightmost strategies stop at the first entry they cannot parse, such as
   `unknown`, since nothing to its left can be trusted.
 
+#### Original scheme and host
+
+[`ClientIpResolver::forwarded_origin`] returns the scheme and host the client
+requested, from the `Forwarded` header's `proto` and `host` parameters or else
+`X-Forwarded-Proto` and `X-Forwarded-Host`. Like the client IP, they are only
+read from trusted proxies, the nearest proxy's value is used, and anything that
+is not `http`, `https`, `ws`, `wss` or a valid host is ignored.
+
+```rust
+use ipware::{ClientIpResolver, HeaderMap, IpRanges};
+
+let resolver =
+    ClientIpResolver::default().trusted_proxies(IpRanges::parse(["10.0.0.0/8"]).unwrap());
+let mut headers = HeaderMap::new();
+headers.insert("x-forwarded-proto", "https".parse().unwrap());
+
+let origin = resolver.forwarded_origin(&headers, Some("10.0.0.2".parse().unwrap()));
+assert_eq!(origin.scheme.as_deref(), Some("https"));
+```
+
 ### 🌐 Platform presets
 
 With the `providers` feature, [`ClientIpResolver::platform`] builds a resolver
@@ -194,6 +214,8 @@ over time, so update the crate regularly or fetch fresh lists and read them with
 [`IpRanges`] parses IP addresses and CIDR ranges, for trusted proxies or your own
 allow and block lists. Ranges are merged and looked up by binary search, so
 blocklists with hundreds of thousands of entries stay fast.
+`ipv4_address_count` and `ipv6_address_count` tell how much of the address
+space a set covers, e.g. to sanity check a list loaded at runtime.
 
 ```rust
 use ipware::IpRanges;
@@ -234,7 +256,9 @@ lookup on the peer address with `ClientIpStrategy::ipware`.
 #### Header precedence
 
 Headers are checked from top to bottom. Each name is tried as written and with
-`_` replaced by `-`.
+`_` replaced by `-`. `forwarded` and `http_forwarded` are read as RFC 7239
+`Forwarded` headers by their `for=` parameters; the others as comma-separated
+lists.
 
 ```text
 x_forwarded_for           Load balancers and proxies such as AWS ELB
@@ -291,7 +315,9 @@ assert!(trusted_route);
 #### Trusted proxy list
 
 With known proxy addresses, `proxy_list` must match the rightmost entries of the
-header exactly and in order.
+header in order. [`IpWareProxy::new`] takes exact addresses;
+[`IpWareProxy::parse`] also accepts CIDR ranges, one per proxy position, e.g.
+`IpWareProxy::parse(0, ["10.1.0.0/16", "198.84.193.158"])`.
 
 ```rust
 use std::net::IpAddr;
@@ -360,6 +386,9 @@ by [@un33k](https://github.com/un33k).
 [`IpRanges`]: https://docs.rs/ipware/latest/ipware/struct.IpRanges.html
 [`IpWareConfig::new`]: https://docs.rs/ipware/latest/ipware/struct.IpWareConfig.html#method.new
 [`header::FORWARDED`]: https://docs.rs/ipware/latest/ipware/header/constant.FORWARDED.html
+[`ClientIpResolver::forwarded_origin`]: https://docs.rs/ipware/latest/ipware/struct.ClientIpResolver.html#method.forwarded_origin
+[`IpWareProxy::new`]: https://docs.rs/ipware/latest/ipware/struct.IpWareProxy.html#method.new
+[`IpWareProxy::parse`]: https://docs.rs/ipware/latest/ipware/struct.IpWareProxy.html#method.parse
 [`ClientIpResolver::platform`]: https://docs.rs/ipware/latest/ipware/struct.ClientIpResolver.html#method.platform
 
 <!-- cargo-rdme end -->
