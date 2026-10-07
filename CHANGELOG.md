@@ -10,6 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `IpRanges::ipv4_address_count` and `ipv6_address_count`.
+- `IpWareProxy::parse` for trusted proxy lists with CIDR ranges, and
+  `From<IpAddr>` for `IpRanges`.
+- `IpWare` reads RFC 7239 `Forwarded` headers (`forwarded`, `http_forwarded`) by
+  their `for=` parameters instead of skipping them.
+- `ClientIpResolver::forwarded_origin` returns the scheme and host the client
+  requested, from `Forwarded` or `X-Forwarded-Proto` / `X-Forwarded-Host`, only
+  for trusted proxies and only when the values are valid.
+
+### Fixed
+
+- `IpWareProxy::is_proxy_trusted_list_valid` no longer panics on an empty list.
 
 ## [0.5.0] - 2026-10-07
 

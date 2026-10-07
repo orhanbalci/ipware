@@ -19,7 +19,7 @@ pub(crate) fn forwarded_ips<H: Headers>(headers: &H, name: &str) -> Vec<Option<I
         };
         for element in split_unquoted(value, ',') {
             let ip = if forwarded {
-                forwarded_for(element).and_then(parse_ip)
+                forwarded_param(element, "for").and_then(parse_ip)
             } else {
                 parse_ip(element)
             };
@@ -58,11 +58,24 @@ pub(crate) fn parse_ip_with_port(entry: &str) -> Option<IpAddr> {
     IpAddr::from_str(host).ok().map(|ip| ip.to_canonical())
 }
 
-/// The `for=` value of one RFC 7239 element, e.g. `for=192.0.2.60;proto=http`.
-fn forwarded_for(element: &str) -> Option<&str> {
+/// The IPs of the `for=` parameters in one RFC 7239 `Forwarded` header value.
+pub(crate) fn forwarded_header_ips(value: &str) -> Vec<Option<IpAddr>> {
+    split_unquoted(value, ',')
+        .map(|element| forwarded_param(element, "for").and_then(parse_ip))
+        .collect()
+}
+
+/// The last element of a `Forwarded` header value, added by the nearest proxy.
+pub(crate) fn last_forwarded_element(value: &str) -> Option<&str> {
+    split_unquoted(value, ',').last()
+}
+
+/// The value of parameter `name` in one RFC 7239 element, e.g. `for` in
+/// `for=192.0.2.60;proto=http`. Quotes are kept.
+pub(crate) fn forwarded_param<'a>(element: &'a str, name: &str) -> Option<&'a str> {
     split_unquoted(element, ';').find_map(|pair| {
         let (key, value) = pair.split_once('=')?;
-        key.trim().eq_ignore_ascii_case("for").then_some(value)
+        key.trim().eq_ignore_ascii_case(name).then_some(value)
     })
 }
 

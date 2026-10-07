@@ -106,6 +106,17 @@ impl IpRanges {
     }
 }
 
+impl From<IpAddr> for IpRanges {
+    fn from(ip: IpAddr) -> Self {
+        let mut ranges = IpRanges::new();
+        match ip.to_canonical() {
+            IpAddr::V4(ip) => ranges.v4.push((u32::from(ip), u32::from(ip))),
+            IpAddr::V6(ip) => ranges.v6.push((u128::from(ip), u128::from(ip))),
+        }
+        ranges
+    }
+}
+
 impl fmt::Debug for IpRanges {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let v4 = self.v4.iter().map(|&(start, end)| {

@@ -272,3 +272,64 @@ fn works_with_http02_headers() {
         header_ip("93.184.216.34")
     );
 }
+
+mod forwarded_origin {
+    use super::*;
+
+    fn resolver() -> ClientIpResolver {
+        ClientIpResolver::default().trusted_proxies(IpRanges::parse(["10.0.0.0/8"]).unwrap())
+    }
+
+    fn headers(pairs: &[(&'static str, &str)]) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        for (name, value) in pairs {
+            headers.append(*name, value.parse().unwrap());
+        }
+        headers
+    }
+
+    #[test]
+    fn prefers_forwarded_and_uses_the_nearest_proxy() {
+        let headers = headers(&[
+            ("forwarded", "for=1.2.3.4;proto=http;host=evil.example, for=5.6.7.8;proto=https;host=\"App.Example.com:8443\""),
+            ("x-forwarded-proto", "http"),
+            ("x-forwarded-host", "other.example"),
+        ]);
+        let origin = resolver().forwarded_origin(&headers, Some(ip("10.0.0.2")));
+        assert_eq!(origin.scheme.as_deref(), Some("https"));
+        assert_eq!(origin.host.as_deref(), Some("app.example.com:8443"));
+    }
+
+    #[test]
+    fn falls_back_to_x_forwarded_headers() {
+        let headers = headers(&[
+            ("x-forwarded-proto", "http, HTTPS"),
+            ("x-forwarded-host", "[2001:db8::1]:8080"),
+        ]);
+        let origin = resolver().forwarded_origin(&headers, Some(ip("10.0.0.2")));
+        assert_eq!(origin.scheme.as_deref(), Some("https"));
+        assert_eq!(origin.host.as_deref(), Some("[2001:db8::1]:8080"));
+    }
+
+    #[test]
+    fn ignores_untrusted_peers_and_invalid_values() {
+        let good = headers(&[
+            ("x-forwarded-proto", "https"),
+            ("x-forwarded-host", "example.com"),
+        ]);
+        let origin = resolver().forwarded_origin(&good, Some(ip("198.51.100.1")));
+        assert_eq!(origin, Default::default());
+
+        let bad = headers(&[
+            ("x-forwarded-proto", "javascript"),
+            ("x-forwarded-host", "example.com/path?x=1"),
+        ]);
+        let origin = resolver().forwarded_origin(&bad, Some(ip("10.0.0.2")));
+        assert_eq!(origin.scheme, None);
+        assert_eq!(origin.host, None);
+
+        let untrusted = ClientIpResolver::default().allow_untrusted(true);
+        let origin = untrusted.forwarded_origin(&good, Some(ip("198.51.100.1")));
+        assert_eq!(origin.scheme.as_deref(), Some("https"));
+    }
+}

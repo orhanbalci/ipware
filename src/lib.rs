@@ -394,7 +394,12 @@ mod ranges;
 mod resolver;
 
 pub use ranges::{IpRangeError, IpRanges};
-pub use resolver::{ClientIpResolver, ClientIpStrategy, IpSource, ResolvedIp};
+pub use resolver::{ClientIpResolver, ClientIpStrategy, ForwardedOrigin, IpSource, ResolvedIp};
+
+/// `Forwarded` and its CGI-style name hold RFC 7239 values rather than plain lists.
+fn is_forwarded_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("forwarded") || name.eq_ignore_ascii_case("http_forwarded")
+}
 
 #[allow(unreachable_pub)]
 mod sealed {
@@ -514,15 +519,41 @@ impl IpWareConfig {
 #[derive(Clone, Debug, Default)]
 pub struct IpWareProxy {
     proxy_count: u16,
-    proxy_list: Vec<IpAddr>,
+    /// One entry per proxy position, matched against the rightmost header entries.
+    proxy_list: Vec<IpRanges>,
 }
 
 impl IpWareProxy {
+    /// Creates a proxy config with a proxy count and the exact addresses of the
+    /// trusted proxies, in header order.
     pub fn new<T>(proxy_count: u16, proxy_list: T) -> Self
     where
         T: Into<Vec<IpAddr>>,
     {
-        IpWareProxy { proxy_count, proxy_list: proxy_list.into() }
+        let proxy_list = proxy_list.into().into_iter().map(IpRanges::from).collect();
+        IpWareProxy { proxy_count, proxy_list }
+    }
+
+    /// Creates a proxy config whose trusted proxies may be CIDR ranges. Each
+    /// entry is one proxy position, in header order.
+    ///
+    /// ```rust
+    /// use ipware::IpWareProxy;
+    ///
+    /// // The second-to-last proxy is any load balancer in 10.1.0.0/16, the last
+    /// // one a fixed address.
+    /// let proxy = IpWareProxy::parse(0, ["10.1.0.0/16", "198.84.193.158"]).unwrap();
+    /// ```
+    pub fn parse<I, R>(proxy_count: u16, proxy_list: I) -> Result<Self, IpRangeError>
+    where
+        I: IntoIterator<Item = R>,
+        R: AsRef<str>,
+    {
+        let proxy_list = proxy_list
+            .into_iter()
+            .map(|proxy| IpRanges::parse([proxy]))
+            .collect::<Result<_, _>>()?;
+        Ok(IpWareProxy { proxy_count, proxy_list })
     }
 
     pub fn is_proxy_count_valid<'a, I>(&self, ip_list: I, strict: bool) -> bool
@@ -555,7 +586,7 @@ impl IpWareProxy {
         let ip_list = ip_list.into_iter().collect::<Vec<_>>();
         let ip_count = ip_list.len();
         let proxy_count = self.proxy_list.len();
-        if (strict && ip_count - 1 != proxy_count) || (ip_count - 1 < proxy_count) {
+        if ip_count == 0 || (strict && ip_count - 1 != proxy_count) || ip_count - 1 < proxy_count {
             return false;
         }
         ip_list
@@ -564,7 +595,7 @@ impl IpWareProxy {
             .take(proxy_count)
             .rev()
             .zip(self.proxy_list.iter())
-            .all(|(ip_addr, proxy_addr)| ip_addr == proxy_addr)
+            .all(|(ip_addr, proxy)| proxy.contains(*ip_addr))
     }
 }
 
@@ -586,11 +617,14 @@ impl IpWare {
         }
     }
 
-    fn get_meta_values<'a, H: Headers>(&self, headers: &'a H) -> Vec<&'a str> {
+    fn get_meta_values<'a, 'b, H: Headers>(&'b self, headers: &'a H) -> Vec<(&'b str, &'a str)> {
         self.config
             .precedence
             .iter()
-            .filter_map(|header_name| self.get_meta_value(headers, header_name))
+            .filter_map(|header_name| {
+                let value = self.get_meta_value(headers, header_name)?;
+                Some((header_name.as_str(), value))
+            })
             .collect()
     }
 
@@ -601,8 +635,12 @@ impl IpWare {
         let mut loopback_list = vec![];
         let mut private_list = vec![];
         let meta_values = self.get_meta_values(headers);
-        for &meta_value in meta_values.iter() {
-            let meta_ips = self.get_ips_from_string(meta_value);
+        for &(header_name, meta_value) in meta_values.iter() {
+            let meta_ips = if is_forwarded_header(header_name) {
+                self.get_ips_from_forwarded(meta_value)
+            } else {
+                self.get_ips_from_string(meta_value)
+            };
             if meta_ips.is_empty() {
                 continue;
             }
@@ -648,6 +686,21 @@ impl IpWare {
                 Err(_) => SocketAddr::from_str(trimmed_ip).map(|socket_addr| socket_addr.ip()),
             })
             .collect()
+        else {
+            return Vec::new();
+        };
+        if !self.config.leftmost {
+            result.reverse();
+        }
+        result
+    }
+
+    /// Parses the `for=` addresses of an RFC 7239 `Forwarded` header. Returns an
+    /// empty vec when any element has no parseable address.
+    fn get_ips_from_forwarded(&self, value: &str) -> Vec<IpAddr> {
+        let Some(mut result) = parse::forwarded_header_ips(value)
+            .into_iter()
+            .collect::<Option<Vec<_>>>()
         else {
             return Vec::new();
         };
@@ -1806,5 +1859,71 @@ mod tests_private_trusted_route {
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
         assert_that!(ip_addr).contains_value("93.184.216.34".parse::<IpAddr>().unwrap());
         assert!(trusted_route);
+    }
+}
+
+#[cfg(all(test, feature = "http1"))]
+mod tests_proxy_ranges_and_forwarded {
+    use spectral::assert_that;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
+
+    #[test]
+    fn proxy_list_accepts_cidr_ranges() {
+        let proxy = IpWareProxy::parse(0, ["10.1.0.0/16", "198.84.193.158"]).unwrap();
+        let ipware = IpWare::new(IpWareConfig::default(), proxy);
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "X-FORWARDED-FOR",
+            "177.139.233.139, 10.1.42.7, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+
+        // A proxy outside the range breaks the trusted route.
+        headers.insert(
+            "X-FORWARDED-FOR",
+            "177.139.233.139, 10.2.0.1, 198.84.193.158".parse().unwrap(),
+        );
+        let (_, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert!(!trusted_route);
+        assert!(IpWareProxy::parse(0, ["10.1.0.0/33"]).is_err());
+    }
+
+    #[test]
+    fn empty_ip_list_is_not_a_trusted_route() {
+        let proxy = IpWareProxy::new(0, vec!["198.84.193.158".parse::<IpAddr>().unwrap()]);
+        assert!(!proxy.is_proxy_trusted_list_valid(&[], false));
+        assert!(!IpWareProxy::new(1, vec![]).is_proxy_count_valid(&[], false));
+    }
+
+    #[test]
+    fn reads_rfc7239_forwarded_header() {
+        let ipware = IpWare::new(
+            IpWareConfig::new(["forwarded"], true),
+            IpWareProxy::new(1, vec![]),
+        );
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "forwarded",
+            "for=177.139.233.139;proto=https, for=\"[2001:db8::1]:443\""
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+
+        // An element without a parseable `for=` skips the header.
+        headers.insert(
+            "forwarded",
+            "for=unknown, for=198.84.193.158".parse().unwrap(),
+        );
+        let (ip_addr, _) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
     }
 }

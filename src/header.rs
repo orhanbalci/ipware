@@ -6,6 +6,10 @@
 pub const FORWARDED: &str = "forwarded";
 /// `X-Forwarded-For`, a list appended to by each proxy.
 pub const X_FORWARDED_FOR: &str = "x-forwarded-for";
+/// `X-Forwarded-Proto`, the scheme the client used.
+pub const X_FORWARDED_PROTO: &str = "x-forwarded-proto";
+/// `X-Forwarded-Host`, the host the client requested.
+pub const X_FORWARDED_HOST: &str = "x-forwarded-host";
 /// `X-Real-IP`, set by nginx.
 pub const X_REAL_IP: &str = "x-real-ip";
 /// `CF-Connecting-IP`, set by Cloudflare.

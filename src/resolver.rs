@@ -243,6 +243,93 @@ impl ClientIpResolver {
     }
 }
 
+/// The scheme and host the client originally requested, as reported by a
+/// trusted proxy. From [`ClientIpResolver::forwarded_origin`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct ForwardedOrigin {
+    /// `http`, `https`, `ws` or `wss`, lowercase.
+    pub scheme: Option<String>,
+    /// The host, with an optional port, lowercase.
+    pub host: Option<String>,
+}
+
+impl ClientIpResolver {
+    /// The scheme and host the client originally requested, from the RFC 7239
+    /// `Forwarded` header's `proto` and `host` parameters, or else
+    /// `X-Forwarded-Proto` and `X-Forwarded-Host`.
+    ///
+    /// Headers are only read when `peer` is a trusted proxy (or
+    /// [`allow_untrusted`](Self::allow_untrusted) is on), and the value from the
+    /// nearest proxy (the rightmost) is used. Values that are not a known scheme
+    /// or a valid host are ignored.
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "http1")] {
+    /// use ipware::{ClientIpResolver, HeaderMap, IpRanges};
+    ///
+    /// let resolver =
+    ///     ClientIpResolver::default().trusted_proxies(IpRanges::parse(["10.0.0.0/8"]).unwrap());
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("x-forwarded-proto", "https".parse().unwrap());
+    /// headers.insert("x-forwarded-host", "Example.com".parse().unwrap());
+    ///
+    /// let origin = resolver.forwarded_origin(&headers, Some("10.0.0.2".parse().unwrap()));
+    /// assert_eq!(origin.scheme.as_deref(), Some("https"));
+    /// assert_eq!(origin.host.as_deref(), Some("example.com"));
+    ///
+    /// let direct = resolver.forwarded_origin(&headers, Some("198.51.100.1".parse().unwrap()));
+    /// assert_eq!(direct.scheme, None);
+    /// # }
+    /// ```
+    pub fn forwarded_origin<H: Headers>(
+        &self,
+        headers: &H,
+        peer: Option<IpAddr>,
+    ) -> ForwardedOrigin {
+        let trusted_peer = peer.is_some_and(|peer| self.is_trusted_proxy(peer));
+        if !(trusted_peer || self.allow_untrusted) {
+            return ForwardedOrigin::default();
+        }
+        let forwarded = headers
+            .get_all_str(crate::header::FORWARDED)
+            .pop()
+            .flatten()
+            .and_then(parse::last_forwarded_element);
+        let param = |name: &str| {
+            forwarded
+                .and_then(|element| parse::forwarded_param(element, name))
+                .map(|value| value.trim().trim_matches('"'))
+        };
+        let last_value = |name: &str| {
+            headers
+                .get_all_str(name)
+                .pop()
+                .flatten()
+                .and_then(|value| value.rsplit(',').next())
+                .map(str::trim)
+        };
+        let scheme = param("proto")
+            .or_else(|| last_value(crate::header::X_FORWARDED_PROTO))
+            .map(str::to_ascii_lowercase)
+            .filter(|scheme| matches!(scheme.as_str(), "http" | "https" | "ws" | "wss"));
+        let host = param("host")
+            .or_else(|| last_value(crate::header::X_FORWARDED_HOST))
+            .map(str::to_ascii_lowercase)
+            .filter(|host| is_valid_host(host));
+        ForwardedOrigin { scheme, host }
+    }
+}
+
+/// A hostname, IPv4 address or bracketed IPv6 address, with an optional port.
+fn is_valid_host(host: &str) -> bool {
+    !host.is_empty()
+        && host.len() <= 260
+        && host.bytes().all(|b| {
+            b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b':' | b'[' | b']')
+        })
+}
+
 /// Reads the client IP from one request.
 struct Lookup<'a, H> {
     resolver: &'a ClientIpResolver,
