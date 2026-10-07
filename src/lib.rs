@@ -48,6 +48,7 @@
 //! ## 🚀 Quick start
 //!
 //! ```rust
+//! # #[cfg(feature = "http1")] {
 //! use std::net::IpAddr;
 //!
 //! use ipware::{header, ClientIpResolver, ClientIpStrategy, HeaderMap, IpRanges, IpSource};
@@ -75,6 +76,7 @@
 //! let client = resolver.resolve(&headers, Some(direct)).unwrap();
 //! assert_eq!(client.ip, direct);
 //! assert_eq!(client.source, IpSource::Peer);
+//! # }
 //! ```
 //!
 //! The peer address comes from your server, for example axum's `ConnectInfo` or
@@ -177,11 +179,13 @@
 //! ipware = { version = "0.4", features = ["providers"] }
 //! ```
 //!
-//! ```rust,ignore
+//! ```rust
+//! # #[cfg(feature = "providers")] {
 //! use ipware::providers::Platform;
 //! use ipware::ClientIpResolver;
 //!
 //! let resolver = ClientIpResolver::platform(Platform::Cloudflare);
+//! # }
 //! ```
 //!
 //! `ipware::providers` also has the GitHub and Stripe webhook ranges for allow
@@ -209,6 +213,7 @@
 //! IP it finds, preferring public addresses over private and loopback ones.
 //!
 //! ```rust
+//! # #[cfg(feature = "http1")] {
 //! use std::net::IpAddr;
 //!
 //! use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
@@ -225,6 +230,7 @@
 //! let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 //! assert_eq!(ip, Some("177.139.233.139".parse::<IpAddr>().unwrap()));
 //! assert!(!trusted_route);
+//! # }
 //! ```
 //!
 //! Without a proxy count or trusted proxy list, `IpWare` returns the leftmost
@@ -272,6 +278,7 @@
 //! after the client in the header: `client, proxy1` is a count of 1.
 //!
 //! ```rust
+//! # #[cfg(feature = "http1")] {
 //! use std::net::IpAddr;
 //!
 //! use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
@@ -286,6 +293,7 @@
 //! let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
 //! assert_eq!(ip, Some("177.139.233.139".parse::<IpAddr>().unwrap()));
 //! assert!(trusted_route);
+//! # }
 //! ```
 //!
 //! ### Trusted proxy list
@@ -294,6 +302,7 @@
 //! header exactly and in order.
 //!
 //! ```rust
+//! # #[cfg(feature = "http1")] {
 //! use std::net::IpAddr;
 //!
 //! use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
@@ -319,6 +328,7 @@
 //! // Strict: the header must hold exactly the client and the proxies.
 //! let (ip, _) = ipware.get_client_ip(&headers, true);
 //! assert_eq!(ip, None);
+//! # }
 //! ```
 //!
 //! `trusted_route` is `true` when a proxy count or proxy list was configured and

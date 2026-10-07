@@ -31,7 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rewrote the README and crate docs: quick start with `ClientIpResolver`, why
   trusted proxies matter, strategy and option reference, and a corrected `IpWare`
   section (exact, ordered proxy list matching; strict mode; spoofing warning).
-  Every example is now a tested doc example.
+  Every example is now a tested doc example, including with only the `http02`
+  or `providers` feature enabled.
+
+### Changed
+
+- Declare the minimum supported Rust version: 1.75 (`rust-version`).
+- New package description, keywords and categories; `layout.kdl` and
+  `rustfmt.toml` are no longer included in the published crate.
 
 ### Fixed
 

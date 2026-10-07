@@ -113,6 +113,7 @@ pub struct ResolvedIp {
 /// the strategy yields no address, the peer address is returned.
 ///
 /// ```rust
+/// # #[cfg(feature = "http1")] {
 /// use ipware::{header, ClientIpResolver, ClientIpStrategy, HeaderMap, IpRanges, IpSource};
 ///
 /// let resolver = ClientIpResolver::new(ClientIpStrategy::rightmost_trusted_range(
@@ -141,6 +142,7 @@ pub struct ResolvedIp {
 ///     .resolve(&headers, Some("198.51.100.1".parse().unwrap()))
 ///     .unwrap();
 /// assert_eq!(resolved.source, IpSource::Peer);
+/// # }
 /// ```
 #[derive(Clone, Debug)]
 pub struct ClientIpResolver {
