@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `IpRanges` and `IpRangeError` for parsing and matching IP addresses and CIDR ranges.
 - `header` module with common client IP header names.
 
+### Documentation
+
+- Rewrote the README and crate docs: quick start with `ClientIpResolver`, why
+  trusted proxies matter, strategy and option reference, and a corrected `IpWare`
+  section (exact, ordered proxy list matching; strict mode; spoofing warning).
+  Every example is now a tested doc example.
+
 ### Fixed
 
 - Proxy count validation compared the header's IP count against the length of
