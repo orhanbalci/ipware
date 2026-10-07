@@ -349,15 +349,16 @@ impl IpWareProxy {
             return true;
         }
 
-        let ip_count = ip_list.into_iter().collect::<Vec<_>>().len();
+        let ip_count = ip_list.into_iter().count();
         if ip_count < 1 {
             return false;
         }
+        let proxy_count = usize::from(self.proxy_count);
         if strict {
-            return self.proxy_list.len() == ip_count - 1;
+            return ip_count - 1 == proxy_count;
         }
 
-        ip_count - 1 > self.proxy_list.len()
+        ip_count > proxy_count
     }
 
     pub fn is_proxy_trusted_list_valid<'a, I>(&self, ip_list: I, strict: bool) -> bool
@@ -863,6 +864,50 @@ mod tests_ipv4_proxy_count {
         assert_that!(ip_addr).is_none();
         assert!(!trusted_route);
     }
+
+    #[test]
+    fn proxy_count_strict_exact() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.158".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn multi_proxy_count_strict_exact() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
+    }
+
+    #[test]
+    fn multi_proxy_count_too_few_ips() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(2, proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.158".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_none();
+        assert!(!trusted_route);
+    }
 }
 
 #[cfg(all(test, feature = "http1"))]
@@ -1236,7 +1281,7 @@ mod tests_ipv6_common {
 mod tests_ipv6_proxy_count {
 
     use spectral::assert_that;
-    use spectral::option::OptionAssertions;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
 
     use super::*;
 
@@ -1268,6 +1313,26 @@ mod tests_ipv6_proxy_count {
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
         assert_that!(ip_addr).is_none();
         assert!(!trusted_route);
+    }
+
+    #[test]
+    fn proxy_count_strict_exact() {
+        let proxies = vec![];
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(1, proxies));
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf, 74dc::02ba"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value(
+            "3ffe:1900:4545:3:200:f8ff:fe21:67cf"
+                .parse::<IpAddr>()
+                .unwrap(),
+        );
+        assert!(trusted_route);
     }
 }
 

@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- Proxy count validation compared the header's IP count against the length of
+  the trusted proxy list instead of `proxy_count`. In strict mode, headers with
+  exactly `proxy_count` proxies were rejected; they now resolve with a trusted route.
+
 ## [0.4.0] - 2026-10-07
 
 ### Added
@@ -63,7 +71,8 @@ For `http` 1.x based frameworks no code changes are needed.
 
 - Initial release, ported from [python-ipware](https://github.com/un33k/python-ipware).
 
-[0.4.0]: https://github.com/orhanbalci/ipware/compare/bc46f50...main
+[Unreleased]: https://github.com/orhanbalci/ipware/compare/v0.4.0...main
+[0.4.0]: https://github.com/orhanbalci/ipware/compare/bc46f50...v0.4.0
 [0.3.0]: https://github.com/orhanbalci/ipware/compare/3e280fa...bc46f50
 [0.2.0]: https://github.com/orhanbalci/ipware/compare/3edb891...3e280fa
 [0.1.0]: https://github.com/orhanbalci/ipware/tree/3edb891
