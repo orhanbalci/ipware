@@ -6,7 +6,6 @@
 
 <!-- cargo-rdme start -->
 
-
 This library aims to extract ip address of http request clients by using
 different http-header values. Ported from [python-ipware](https://github.com/un33k/python-ipware)
 developped by [@un33k](https://github.com/un33k)
@@ -15,14 +14,31 @@ developped by [@un33k](https://github.com/un33k)
 
 ```toml
 [dependencies]
-ipware = "0.1"
+ipware = "0.4"
 ```
+
+### 🧩 Features
+
+`ipware` reads headers from the `HeaderMap` of the `http` crate. Pick the
+version your web framework uses; both can be enabled at the same time.
+
+| Feature            | `http` version | Frameworks                                  |
+| ------------------ | -------------- | ------------------------------------------- |
+| `http1` (default)  | 1.x            | axum 0.7+, hyper 1, tonic 0.12+, reqwest 0.12+ |
+| `http02`           | 0.2            | actix-web 4, hyper 0.14, warp 0.3           |
+
+```toml
+# actix-web 4
+ipware = { version = "0.4", default-features = false, features = ["http02"] }
+```
+
+`http` 1.x types are re-exported at the crate root (`ipware::HeaderMap`), and
+each enabled `http` crate is re-exported as `ipware::http` / `ipware::http02`.
 
 ### 🔧 Example
 
 ```rust
-use http::{HeaderMap, HeaderName};
-use ipware::{IpWare, IpWareConfig, IpWareProxy};
+use ipware::{HeaderMap, HeaderName, IpWare, IpWareConfig, IpWareProxy};
 
 let ipware = IpWare::new(
     IpWareConfig::new(
@@ -78,7 +94,7 @@ println!("{} {}", ip_addr.unwrap(), trusted_route);
 The client IP address can be found in one or more request headers attributes. The lookup order is top to bottom and the default attributes are as follow.
 
 ```rust
-pub use http::HeaderName;
+use ipware::HeaderName;
 let request_headers_precedence = vec![
     HeaderName::from_static("x_forwarded_for"), /* Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]), */
     HeaderName::from_static("http_x_forwarded_for"), // Similar to X_FORWARDED_TO
@@ -104,19 +120,18 @@ let request_headers_precedence = vec![
 
 You can customize the order by providing your own list using IpWareConfig.
 ```rust
-use ipware::IpWareConfig;
-use http::HeaderName;
+use ipware::{HeaderName, IpWareConfig};
 // specific header name
 IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")],true);
 
 // multiple header names
 IpWareConfig::new(
-    vec![
-        HeaderName::from_static("http_x_forwarded_for"),
-        HeaderName::from_static("x_forwarded_for"),
-    ],
-    true,
-);
+               vec![
+                   HeaderName::from_static("http_x_forwarded_for"),
+                   HeaderName::from_static("x_forwarded_for"),
+               ],
+               true,
+           );
 ```
 
 #### 🤝 Trusted Proxies
@@ -135,9 +150,9 @@ use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
 
 let headers = HeaderMap::new(); // replace this with your own headers
 let proxies = vec![
-    "198.84.193.157".parse::<IpAddr>().unwrap(),
-    "198.84.193.158".parse::<IpAddr>().unwrap(),
-];
+            "198.84.193.157".parse::<IpAddr>().unwrap(),
+            "198.84.193.158".parse::<IpAddr>().unwrap(),
+        ];
 let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::new(0, proxies));
 
 // usage: non-strict mode (X-Forwarded-For: <fake>, <client>, <proxy1>, <proxy2>)
@@ -150,7 +165,7 @@ let (ip, trusted_route) = ipware.get_client_ip(&headers, false);
 // Total ip address are total trusted proxies + client ip
 // We don't allow far-end proxies, or fake addresses (exact or None)
 let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
-```
+ ```
 
 #### Proxy Count
 
@@ -158,8 +173,8 @@ If your http server is behind a `known` number of proxies, but you deploy on mul
 
 You can customize the proxy count by providing your `proxy_count` using IpWareProxy.
 ```rust
-use ipware::*;
 use std::net::IpAddr;
+use ipware::{HeaderMap, IpWare, IpWareConfig, IpWareProxy};
 
 // In the above scenario, the total number of proxies can be used as a way to filter out unwanted requests.
 // enforce proxy count
@@ -196,7 +211,8 @@ trusted proxy.
 However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
 ```
 ```rust
-use ipware::*;
+use ipware::{IpWare, IpWareConfig, IpWareProxy};
+
 let ipware = IpWare::new(
     IpWareConfig::default().leftmost(false),
     IpWareProxy::default(),

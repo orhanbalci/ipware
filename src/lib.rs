@@ -12,14 +12,31 @@
 //!
 //! ```toml
 //! [dependencies]
-//! ipware = "0.1"
+//! ipware = "0.4"
 //! ```
+//!
+//! ## 🧩 Features
+//!
+//! `ipware` reads headers from the `HeaderMap` of the `http` crate. Pick the
+//! version your web framework uses; both can be enabled at the same time.
+//!
+//! | Feature            | `http` version | Frameworks                                  |
+//! | ------------------ | -------------- | ------------------------------------------- |
+//! | `http1` (default)  | 1.x            | axum 0.7+, hyper 1, tonic 0.12+, reqwest 0.12+ |
+//! | `http02`           | 0.2            | actix-web 4, hyper 0.14, warp 0.3           |
+//!
+//! ```toml
+//! # actix-web 4
+//! ipware = { version = "0.4", default-features = false, features = ["http02"] }
+//! ```
+//!
+//! `http` 1.x types are re-exported at the crate root (`ipware::HeaderMap`), and
+//! each enabled `http` crate is re-exported as `ipware::http` / `ipware::http02`.
 //!
 //! ## 🔧 Example
 //!
 //! ```rust
-//! use http::{HeaderMap, HeaderName};
-//! use ipware::{IpWare, IpWareConfig, IpWareProxy};
+//! use ipware::{HeaderMap, HeaderName, IpWare, IpWareConfig, IpWareProxy};
 //!
 //! let ipware = IpWare::new(
 //!     IpWareConfig::new(
@@ -75,7 +92,7 @@
 //! The client IP address can be found in one or more request headers attributes. The lookup order is top to bottom and the default attributes are as follow.
 //!
 //! ```rust
-//! pub use http::HeaderName;
+//! use ipware::HeaderName;
 //! let request_headers_precedence = vec![
 //!     HeaderName::from_static("x_forwarded_for"), /* Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]), */
 //!     HeaderName::from_static("http_x_forwarded_for"), // Similar to X_FORWARDED_TO
@@ -101,19 +118,18 @@
 //!
 //! You can customize the order by providing your own list using IpWareConfig.
 //! ```rust
-//! use ipware::IpWareConfig;
-//! use http::HeaderName;
+//! use ipware::{HeaderName, IpWareConfig};
 //! // specific header name
-//! IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")],true);
+//! IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")], true);
 //!
 //! // multiple header names
 //! IpWareConfig::new(
-//!                vec![
-//!                    HeaderName::from_static("http_x_forwarded_for"),
-//!                    HeaderName::from_static("x_forwarded_for"),
-//!                ],
-//!                true,
-//!            );
+//!     vec![
+//!         HeaderName::from_static("http_x_forwarded_for"),
+//!         HeaderName::from_static("x_forwarded_for"),
+//!     ],
+//!     true,
+//! );
 //! ```
 //!
 //! ### 🤝 Trusted Proxies
@@ -177,14 +193,14 @@
 //! // total number of ip addresses are exactly equal to client ip + proxy_count
 //! let (ip, trusted_route) = ipware.get_client_ip(&headers, true);
 //! ```
-//!
+//! 
 //! ### Support for IPv4, Ipv6, and IP:Port patterns and encapsulation
 //! ```text
 //! - Library looks for an IpAddr in header values. If this fails algorithm tries to parse a SocketAddr (This on contains ports in addition to IpAddr)
 //! - get_client_ip call returns an IpAddr enum. User can match for V4 or V6 variants. If a V6 ip is retrieved user can utilize `to_ipv4_mapped` to
 //!    retrieve wrapped V4 address if available.
 //! ```
-//!
+//! 
 //! ### Originating Request
 //! ```test
 //! Please note that the [de-facto](https:#developer.mozilla.org/en-US/docs/Web/HTTP/Headers/X-Forwarded-For) standard
@@ -192,7 +208,7 @@
 //! trusted proxy.
 //! However, in rare cases your network has a `custom` configuration where the `rightmost` IP address is that of the originating client. If that is the case, then indicate it when creating:
 //! ```
-//!```rust
+//! ```rust
 //! use ipware::{IpWare, IpWareConfig, IpWareProxy};
 //!
 //! let ipware = IpWare::new(
@@ -203,51 +219,106 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::string::ToString;
 
+#[cfg(not(any(feature = "http1", feature = "http02")))]
+compile_error!("ipware requires at least one of the `http1` or `http02` features");
+
+#[cfg(feature = "http1")]
+pub use http;
+#[cfg(feature = "http1")]
 pub use http::header::{HeaderMap, HeaderName, HeaderValue};
+#[cfg(feature = "http02")]
+pub use http02;
+
+#[allow(unreachable_pub)]
+mod sealed {
+    pub trait Sealed {}
+}
+
+/// Header collections [`IpWare::get_client_ip`] can read from.
+///
+/// Implemented for `HeaderMap` of `http` 1.x (feature `http1`) and `http` 0.2
+/// (feature `http02`). This trait is sealed and cannot be implemented outside
+/// this crate.
+pub trait Headers: sealed::Sealed {
+    #[doc(hidden)]
+    fn get_str(&self, name: &str) -> Option<&str>;
+}
+
+#[cfg(feature = "http1")]
+impl sealed::Sealed for http::HeaderMap {}
+
+#[cfg(feature = "http1")]
+impl Headers for http::HeaderMap {
+    fn get_str(&self, name: &str) -> Option<&str> {
+        self.get(name).and_then(|value| value.to_str().ok())
+    }
+}
+
+#[cfg(feature = "http02")]
+impl sealed::Sealed for http02::HeaderMap {}
+
+#[cfg(feature = "http02")]
+impl Headers for http02::HeaderMap {
+    fn get_str(&self, name: &str) -> Option<&str> {
+        self.get(name).and_then(|value| value.to_str().ok())
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct IpWareConfig {
-    precedence: Vec<HeaderName>,
+    precedence: Vec<String>,
     leftmost: bool,
 }
 
 impl Default for IpWareConfig {
     fn default() -> Self {
         IpWareConfig {
-            precedence: vec![
-                HeaderName::from_static("x_forwarded_for"), /* Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]), */
-                HeaderName::from_static("http_x_forwarded_for"), // Similar to X_FORWARDED_TO
-                HeaderName::from_static("http_client_ip"), /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
-                HeaderName::from_static("http_x_real_ip"), /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
-                HeaderName::from_static("http_x_forwarded"), // Squid and others
-                HeaderName::from_static("http_x_cluster_client_ip"), /* Rackspace LB and Riverbed Stingray */
-                HeaderName::from_static("http_forwarded_for"),       // RFC 7239
-                HeaderName::from_static("http_forwarded"),           // RFC 7239
-                HeaderName::from_static("http_via"),                 // Squid and others
-                HeaderName::from_static("x-real-ip"),                // NGINX
-                HeaderName::from_static("x-cluster-client-ip"), // Rackspace Cloud Load Balancers
-                HeaderName::from_static("x_forwarded"),         // Squid
-                HeaderName::from_static("forwarded_for"),       // RFC 7239
-                HeaderName::from_static("cf-connecting-ip"),    // CloudFlare
-                HeaderName::from_static("true-client-ip"),      // CloudFlare Enterprise,
-                HeaderName::from_static("fastly-client-ip"),    // Firebase, Fastly
-                HeaderName::from_static("forwarded"),           // RFC 7239
-                HeaderName::from_static("client-ip"), /* Akamai and Cloudflare: True-Client-IP and Fastly: Fastly-Client-IP */
-                HeaderName::from_static("remote_addr"), // Default
-            ],
+            precedence: [
+                "x_forwarded_for", /* Load balancers or proxies such as AWS ELB (default client is `left-most` [`<client>, <proxy1>, <proxy2>`]), */
+                "http_x_forwarded_for", // Similar to X_FORWARDED_TO
+                "http_client_ip", /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
+                "http_x_real_ip", /* Standard headers used by providers such as Amazon EC2, Heroku etc. */
+                "http_x_forwarded", // Squid and others
+                "http_x_cluster_client_ip", /* Rackspace LB and Riverbed Stingray */
+                "http_forwarded_for",       // RFC 7239
+                "http_forwarded",           // RFC 7239
+                "http_via",                 // Squid and others
+                "x-real-ip",                // NGINX
+                "x-cluster-client-ip", // Rackspace Cloud Load Balancers
+                "x_forwarded",         // Squid
+                "forwarded_for",       // RFC 7239
+                "cf-connecting-ip",    // CloudFlare
+                "true-client-ip",      // CloudFlare Enterprise,
+                "fastly-client-ip",    // Firebase, Fastly
+                "forwarded",           // RFC 7239
+                "client-ip", /* Akamai and Cloudflare: True-Client-IP and Fastly: Fastly-Client-IP */
+                "remote_addr", // Default
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect(),
             leftmost: true,
         }
     }
 }
 
 impl IpWareConfig {
-    pub fn new<T>(precedence: T, leftmost: bool) -> Self
+    /// Creates a config with the given header lookup order.
+    ///
+    /// Header names can be `HeaderName`s of either `http` version, or plain strings.
+    pub fn new<T, N>(precedence: T, leftmost: bool) -> Self
     where
-        T: Into<Vec<HeaderName>>,
+        T: IntoIterator<Item = N>,
+        N: AsRef<str>,
     {
-        IpWareConfig { precedence: precedence.into(), leftmost }
+        IpWareConfig {
+            precedence: precedence
+                .into_iter()
+                .map(|name| name.as_ref().to_ascii_lowercase())
+                .collect(),
+            leftmost,
+        }
     }
 
     pub fn leftmost(mut self, leftmost: bool) -> Self {
@@ -323,28 +394,25 @@ impl IpWare {
         IpWare { config, proxy }
     }
 
-    fn get_meta_value<'a>(
-        &self,
-        headers: &'a HeaderMap,
-        name: &HeaderName,
-    ) -> Option<&'a HeaderValue> {
-        match headers.get(name) {
+    fn get_meta_value<'a, H: Headers>(&self, headers: &'a H, name: &str) -> Option<&'a str> {
+        match headers.get_str(name) {
             Some(value) => Some(value),
-            None => headers.get(name.to_string().replace('_', "-")),
+            None => headers.get_str(&name.replace('_', "-")),
         }
     }
 
-    fn get_meta_values<'a>(&self, headers: &'a HeaderMap) -> Vec<&'a str> {
+    fn get_meta_values<'a, H: Headers>(&self, headers: &'a H) -> Vec<&'a str> {
         self.config
             .precedence
             .iter()
             .filter_map(|header_name| self.get_meta_value(headers, header_name))
-            .filter_map(|header_value| header_value.to_str().ok())
             .collect()
     }
 
     /// Returns the client's IP address.
-    pub fn get_client_ip(&self, headers: &HeaderMap, strict: bool) -> (Option<IpAddr>, bool) {
+    ///
+    /// `headers` can be a `HeaderMap` from `http` 1.x or 0.2, depending on enabled features.
+    pub fn get_client_ip<H: Headers>(&self, headers: &H, strict: bool) -> (Option<IpAddr>, bool) {
         let mut loopback_list = vec![];
         let mut private_list = vec![];
         let meta_values = self.get_meta_values(headers);
@@ -432,7 +500,7 @@ impl IpWare {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv4_common {
     use spectral::assert_that;
     use spectral::option::{ContainingOptionAssertions, OptionAssertions};
@@ -734,7 +802,7 @@ mod tests_ipv4_common {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv4_proxy_count {
     use spectral::assert_that;
     use spectral::option::{ContainingOptionAssertions, OptionAssertions};
@@ -797,7 +865,7 @@ mod tests_ipv4_proxy_count {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv4_proxy_list {
     use spectral::assert_that;
     use spectral::option::{ContainingOptionAssertions, OptionAssertions};
@@ -864,7 +932,7 @@ mod tests_ipv4_proxy_list {
         assert!(trusted_route);
     }
 }
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv4_proxy_count_proxy_list {
     use spectral::assert_that;
     use spectral::option::{ContainingOptionAssertions, OptionAssertions};
@@ -912,7 +980,7 @@ mod tests_ipv4_proxy_count_proxy_list {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv4_port {
 
     use spectral::assert_that;
@@ -960,7 +1028,7 @@ mod tests_ipv4_port {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv6_common {
 
     use spectral::assert_that;
@@ -1164,7 +1232,7 @@ mod tests_ipv6_common {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv6_proxy_count {
 
     use spectral::assert_that;
@@ -1203,7 +1271,7 @@ mod tests_ipv6_proxy_count {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv6_proxy_list {
 
     use spectral::assert_that;
@@ -1300,7 +1368,7 @@ mod tests_ipv6_proxy_list {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv6_encapsulation {
 
     use std::net::Ipv4Addr;
@@ -1337,7 +1405,7 @@ mod tests_ipv6_encapsulation {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "http1"))]
 mod tests_ipv6_with_port {
 
     use std::net::{Ipv4Addr, Ipv6Addr};
@@ -1387,5 +1455,55 @@ mod tests_ipv6_with_port {
         let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
         assert_that!(ip_addr).contains_value(IpAddr::V6("::1".parse::<Ipv6Addr>().unwrap()));
         assert!(!trusted_route);
+    }
+}
+
+#[cfg(all(test, feature = "http02"))]
+mod tests_http02 {
+    use spectral::assert_that;
+    use spectral::option::{ContainingOptionAssertions, OptionAssertions};
+
+    use super::*;
+
+    #[test]
+    fn single_header() {
+        let ipware = IpWare::new(IpWareConfig::default(), IpWareProxy::default());
+        let mut headers = http02::HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.157, 198.84.193.158"
+                .parse()
+                .unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, false);
+        assert_that!(ip_addr).is_some();
+        assert_that!(ip_addr).contains_value("177.139.233.139".parse::<IpAddr>().unwrap());
+        assert!(!trusted_route);
+    }
+
+    #[test]
+    fn precedence_from_header_names() {
+        let ipware = IpWare::new(
+            IpWareConfig::new(
+                vec![
+                    http02::HeaderName::from_static("x_forwarded_for"),
+                    http02::HeaderName::from_static("http_x_forwarded_for"),
+                ],
+                true,
+            ),
+            IpWareProxy::new(1, vec!["198.84.193.158".parse::<IpAddr>().unwrap()]),
+        );
+        let mut headers = http02::HeaderMap::new();
+        headers.insert(
+            "HTTP_X_FORWARDED_FOR",
+            "177.139.233.139, 198.84.193.158".parse().unwrap(),
+        );
+        headers.insert(
+            "X-FORWARDED-FOR",
+            "177.139.233.138, 198.84.193.158".parse().unwrap(),
+        );
+        let (ip_addr, trusted_route) = ipware.get_client_ip(&headers, true);
+        assert_that!(ip_addr).contains_value("177.139.233.138".parse::<IpAddr>().unwrap());
+        assert!(trusted_route);
     }
 }
