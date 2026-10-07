@@ -216,6 +216,45 @@
 //!     IpWareProxy::default(),
 //! );
 //! ```
+//!
+//! ## 🛡️ Client IP Resolver
+//!
+//! [`ClientIpResolver`] combines the TCP peer address with a [`ClientIpStrategy`].
+//! Headers are only read when the peer is one of your trusted proxies, so clients
+//! that reach the server directly cannot spoof their IP. The rightmost strategies
+//! walk forwarding headers from the right, where your own proxies added entries.
+//!
+//! | Strategy | Use when |
+//! | --- | --- |
+//! | `rightmost_trusted_range(header)` | your proxies' ranges are known; skips them from the right |
+//! | `rightmost_trusted_count(header, n)` | a fixed number of proxies sit in front of the server |
+//! | `rightmost_non_private(header)` | proxies are on private networks, clients on the internet |
+//! | `single_header(header)` | a CDN sets one header, such as `CF-Connecting-IP` |
+//! | `ipware(ipware, strict)` | [`IpWare`]'s header lookup, gated on the trusted peer |
+//! | `Peer` | there is no proxy |
+//! | `chain(strategies)` | try several strategies in order |
+//!
+//! ```rust
+//! use std::net::IpAddr;
+//!
+//! use ipware::{header, ClientIpResolver, ClientIpStrategy, HeaderMap, IpRanges};
+//!
+//! let resolver = ClientIpResolver::new(ClientIpStrategy::rightmost_trusted_range(
+//!     header::X_FORWARDED_FOR,
+//! ))
+//! .trusted_proxies(IpRanges::parse(["10.0.0.0/8"]).unwrap())
+//! .max_forwarded_hops(10);
+//!
+//! let mut headers = HeaderMap::new();
+//! headers.insert("x-forwarded-for", "93.184.216.34, 10.0.0.5".parse().unwrap());
+//! let peer: IpAddr = "10.0.0.2".parse().unwrap(); // from your server's connection info
+//! let client = resolver.resolve(&headers, Some(peer)).unwrap();
+//! assert_eq!(client.ip, "93.184.216.34".parse::<IpAddr>().unwrap());
+//! ```
+//!
+//! Rightmost strategies read `X-Forwarded-For` lists and RFC 7239 `Forwarded`
+//! headers, accept ports, brackets and IPv6 zones, and stop at the first entry
+//! they cannot parse.
 
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
@@ -230,6 +269,14 @@ pub use http::header::{HeaderMap, HeaderName, HeaderValue};
 #[cfg(feature = "http02")]
 pub use http02;
 
+pub mod header;
+mod parse;
+mod ranges;
+mod resolver;
+
+pub use ranges::{IpRangeError, IpRanges};
+pub use resolver::{ClientIpResolver, ClientIpStrategy, IpSource, ResolvedIp};
+
 #[allow(unreachable_pub)]
 mod sealed {
     pub trait Sealed {}
@@ -243,6 +290,10 @@ mod sealed {
 pub trait Headers: sealed::Sealed {
     #[doc(hidden)]
     fn get_str(&self, name: &str) -> Option<&str>;
+
+    /// Every line of the header, `None` for values that are not valid UTF-8.
+    #[doc(hidden)]
+    fn get_all_str(&self, name: &str) -> Vec<Option<&str>>;
 }
 
 #[cfg(feature = "http1")]
@@ -253,6 +304,13 @@ impl Headers for http::HeaderMap {
     fn get_str(&self, name: &str) -> Option<&str> {
         self.get(name).and_then(|value| value.to_str().ok())
     }
+
+    fn get_all_str(&self, name: &str) -> Vec<Option<&str>> {
+        self.get_all(name)
+            .iter()
+            .map(|value| value.to_str().ok())
+            .collect()
+    }
 }
 
 #[cfg(feature = "http02")]
@@ -262,6 +320,13 @@ impl sealed::Sealed for http02::HeaderMap {}
 impl Headers for http02::HeaderMap {
     fn get_str(&self, name: &str) -> Option<&str> {
         self.get(name).and_then(|value| value.to_str().ok())
+    }
+
+    fn get_all_str(&self, name: &str) -> Vec<Option<&str>> {
+        self.get_all(name)
+            .iter()
+            .map(|value| value.to_str().ok())
+            .collect()
     }
 }
 

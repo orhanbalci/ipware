@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ClientIpResolver`: resolves the client IP from headers and the TCP peer
+  address, reading headers only when the peer is a trusted proxy.
+- `ClientIpStrategy`: `Peer`, `Ipware`, `SingleHeader`, `RightmostNonPrivate`,
+  `RightmostTrustedCount`, `RightmostTrustedRange`, and `Chain`.
+- RFC 7239 `Forwarded` header parsing; forwarding header entries with ports,
+  brackets, quotes and IPv6 zones; multiple header lines are combined.
+- Trust switches for loopback, private, and link-local proxies, and
+  `max_forwarded_hops` to limit how far the rightmost strategies walk.
+- `IpRanges` and `IpRangeError` for parsing and matching IP addresses and CIDR ranges.
+- `header` module with common client IP header names.
+
 ### Fixed
 
 - Proxy count validation compared the header's IP count against the length of

@@ -23,6 +23,7 @@ http02 = ["dep:http02"]
 http = { version = "1", optional = true }
 http02 = { package = "http", version = "0.2.9", optional = true }
 ip_rfc = "0.1.0"
+ipnet = "2.9"
 
 [package.metadata.docs.rs]
 all-features = true

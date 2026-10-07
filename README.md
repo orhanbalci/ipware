@@ -122,16 +122,16 @@ You can customize the order by providing your own list using IpWareConfig.
 ```rust
 use ipware::{HeaderName, IpWareConfig};
 // specific header name
-IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")],true);
+IpWareConfig::new(vec![HeaderName::from_static("http_x_forwarded_for")], true);
 
 // multiple header names
 IpWareConfig::new(
-               vec![
-                   HeaderName::from_static("http_x_forwarded_for"),
-                   HeaderName::from_static("x_forwarded_for"),
-               ],
-               true,
-           );
+    vec![
+        HeaderName::from_static("http_x_forwarded_for"),
+        HeaderName::from_static("x_forwarded_for"),
+    ],
+    true,
+);
 ```
 
 #### 🤝 Trusted Proxies
@@ -218,6 +218,45 @@ let ipware = IpWare::new(
     IpWareProxy::default(),
 );
 ```
+
+### 🛡️ Client IP Resolver
+
+[`ClientIpResolver`] combines the TCP peer address with a [`ClientIpStrategy`].
+Headers are only read when the peer is one of your trusted proxies, so clients
+that reach the server directly cannot spoof their IP. The rightmost strategies
+walk forwarding headers from the right, where your own proxies added entries.
+
+| Strategy | Use when |
+| --- | --- |
+| `rightmost_trusted_range(header)` | your proxies' ranges are known; skips them from the right |
+| `rightmost_trusted_count(header, n)` | a fixed number of proxies sit in front of the server |
+| `rightmost_non_private(header)` | proxies are on private networks, clients on the internet |
+| `single_header(header)` | a CDN sets one header, such as `CF-Connecting-IP` |
+| `ipware(ipware, strict)` | [`IpWare`]'s header lookup, gated on the trusted peer |
+| `Peer` | there is no proxy |
+| `chain(strategies)` | try several strategies in order |
+
+```rust
+use std::net::IpAddr;
+
+use ipware::{header, ClientIpResolver, ClientIpStrategy, HeaderMap, IpRanges};
+
+let resolver = ClientIpResolver::new(ClientIpStrategy::rightmost_trusted_range(
+    header::X_FORWARDED_FOR,
+))
+.trusted_proxies(IpRanges::parse(["10.0.0.0/8"]).unwrap())
+.max_forwarded_hops(10);
+
+let mut headers = HeaderMap::new();
+headers.insert("x-forwarded-for", "93.184.216.34, 10.0.0.5".parse().unwrap());
+let peer: IpAddr = "10.0.0.2".parse().unwrap(); // from your server's connection info
+let client = resolver.resolve(&headers, Some(peer)).unwrap();
+assert_eq!(client.ip, "93.184.216.34".parse::<IpAddr>().unwrap());
+```
+
+Rightmost strategies read `X-Forwarded-For` lists and RFC 7239 `Forwarded`
+headers, accept ports, brackets and IPv6 zones, and stop at the first entry
+they cannot parse.
 
 <!-- cargo-rdme end -->
 
